@@ -1,0 +1,8 @@
+{
+  "name": "TFiZ",
+  "description": "The Future is Digital. Premium AI-powered lifestyle assistant with live AR activation and style discovery.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

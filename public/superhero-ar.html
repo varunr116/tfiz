@@ -1,0 +1,3459 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
+    <title>SuperheroAR</title>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"
+      crossorigin="anonymous"
+    ></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+        font-family: "Courier New", monospace;
+      }
+      #video {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transform: scaleX(-1);
+        z-index: 1;
+      }
+      #wing-canvas {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: none;
+        pointer-events: none;
+      }
+      #wing-comp-canvas {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 2;
+        pointer-events: none;
+      }
+      #person-canvas {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 3;
+        pointer-events: none;
+      }
+      #mask-canvas {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: none;
+        pointer-events: none;
+      }
+      #mask-comp-canvas {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 4;
+        pointer-events: none;
+      }
+      #overlay-canvas {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 6;
+        pointer-events: none;
+      }
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 200;
+        background: #000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 24px;
+        cursor: pointer;
+        transition: opacity 0.6s ease;
+      }
+      #splash.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .splash-ring {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        border: 2px solid #00e5ff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: pulse-ring 2s ease-in-out infinite;
+        position: relative;
+      }
+      .splash-ring::before {
+        content: "";
+        position: absolute;
+        inset: 8px;
+        border-radius: 50%;
+        border: 1px solid rgba(0, 229, 255, 0.3);
+        animation: pulse-ring 2s ease-in-out infinite 0.3s;
+      }
+      .splash-icon {
+        font-size: 36px;
+      }
+      @keyframes pulse-ring {
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+        50% {
+          transform: scale(1.08);
+          opacity: 0.7;
+        }
+      }
+      .splash-title {
+        color: #00e5ff;
+        font-size: 13px;
+        letter-spacing: 0.25em;
+        text-transform: uppercase;
+      }
+      .splash-sub {
+        color: rgba(255, 255, 255, 0.4);
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        text-align: center;
+        padding: 0 32px;
+      }
+      #debug-hud {
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        z-index: 50;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        pointer-events: none;
+      }
+      .hud-pill {
+        background: rgba(0, 0, 0, 0.65);
+        border: 1px solid rgba(0, 229, 255, 0.25);
+        border-radius: 4px;
+        padding: 4px 10px;
+        font-size: 10px;
+        letter-spacing: 0.07em;
+        color: #00e5ff;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .hud-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #00e5ff;
+        animation: blink 1.2s ease-in-out infinite;
+      }
+      .hud-dot.red {
+        background: #ff4444;
+        animation: none;
+      }
+      .hud-dot.yellow {
+        background: #ffcc00;
+      }
+      .hud-dot.off {
+        background: #444;
+        animation: none;
+      }
+      @keyframes blink {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.2;
+        }
+      }
+      #exp-switcher {
+        position: fixed;
+        bottom: 32px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 50;
+        display: flex;
+        align-items: center;
+      }
+      .exp-arrow {
+        background: rgba(0, 0, 0, 0.75);
+        border: 1px solid rgba(0, 229, 255, 0.45);
+        color: #00e5ff;
+        font-size: 16px;
+        padding: 11px 18px;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      .exp-arrow:hover {
+        background: rgba(0, 229, 255, 0.18);
+      }
+      .exp-arrow:first-child {
+        border-radius: 8px 0 0 8px;
+        border-right: none;
+      }
+      .exp-arrow:last-child {
+        border-radius: 0 8px 8px 0;
+        border-left: none;
+      }
+      #exp-name {
+        background: rgba(0, 0, 0, 0.8);
+        border: 1px solid rgba(0, 229, 255, 0.45);
+        color: #00e5ff;
+        font-family: "Courier New", monospace;
+        font-size: 11px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        padding: 11px 26px;
+        min-width: 220px;
+        text-align: center;
+        transition: opacity 0.25s;
+      }
+      #exp-name.flash {
+        opacity: 0;
+      }
+      #controls {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        z-index: 50;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .ctrl-btn {
+        background: rgba(0, 0, 0, 0.6);
+        border: 1px solid rgba(0, 229, 255, 0.3);
+        color: #00e5ff;
+        font-family: "Courier New", monospace;
+        font-size: 9px;
+        letter-spacing: 0.1em;
+        padding: 5px 10px;
+        cursor: pointer;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="splash">
+      <div class="splash-ring"><span class="splash-icon">⚡</span></div>
+      <div class="splash-title">SuperheroAR</div>
+      <div class="splash-sub">Tap to activate &amp; allow camera</div>
+    </div>
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="wing-canvas"></canvas>
+    <canvas id="wing-comp-canvas"></canvas>
+    <canvas id="person-canvas"></canvas>
+    <canvas id="mask-canvas"></canvas>
+    <canvas id="mask-comp-canvas"></canvas>
+    <canvas id="overlay-canvas"></canvas>
+    <div id="debug-hud">
+      <div class="hud-pill">
+        <div class="hud-dot red" id="cam-dot"></div>
+        <span id="cam-status">CAMERA OFFLINE</span>
+      </div>
+      <div class="hud-pill">
+        <div class="hud-dot off" id="mp-dot"></div>
+        <span id="mp-status">MEDIAPIPE LOADING</span>
+      </div>
+      <div class="hud-pill">
+        <div class="hud-dot off" id="fps-dot"></div>
+        <span id="fps-status">FPS --</span>
+      </div>
+      <div class="hud-pill">
+        <div class="hud-dot off" id="seg-dot"></div>
+        <span id="seg-status">SEG --</span>
+      </div>
+      <div class="hud-pill">
+        <div class="hud-dot off" id="exp-dot"></div>
+        <span id="exp-status">EXP --</span>
+      </div>
+      <div class="hud-pill" id="perf-pill" style="display: none">
+        <div class="hud-dot yellow"></div>
+        <span>MOBILE MODE</span>
+      </div>
+    </div>
+    <div id="controls">
+      <button class="ctrl-btn" id="btn-seg">MASK DEBUG: OFF</button>
+    </div>
+    <div id="exp-switcher">
+      <button class="exp-arrow" id="btn-prev">&#9664;</button>
+      <div id="exp-name">ANGEL WINGS</div>
+      <button class="exp-arrow" id="btn-next">&#9654;</button>
+    </div>
+
+    <script>
+      "use strict"
+
+      // ═══════════════════════════════════════════════════════════
+      // LANDMARK INDICES
+      // ═══════════════════════════════════════════════════════════
+      const POSE_IDX = {
+        NOSE: 0,
+        L_EYE: 2,
+        R_EYE: 5,
+        L_SHOULDER: 11,
+        R_SHOULDER: 12,
+        L_ELBOW: 13,
+        R_ELBOW: 14,
+        L_WRIST: 15,
+        R_WRIST: 16,
+        L_HIP: 23,
+        R_HIP: 24,
+      }
+
+      const HAND_IDX = {
+        WRIST: 0,
+        THUMB_CMC: 1,
+        THUMB_MCP: 2,
+        THUMB_IP: 3,
+        THUMB_TIP: 4,
+        INDEX_MCP: 5,
+        INDEX_PIP: 6,
+        INDEX_DIP: 7,
+        INDEX_TIP: 8,
+        MIDDLE_MCP: 9,
+        MIDDLE_PIP: 10,
+        MIDDLE_DIP: 11,
+        MIDDLE_TIP: 12,
+        RING_MCP: 13,
+        RING_PIP: 14,
+        RING_DIP: 15,
+        RING_TIP: 16,
+        PINKY_MCP: 17,
+        PINKY_PIP: 18,
+        PINKY_DIP: 19,
+        PINKY_TIP: 20,
+      }
+
+      // Face landmark indices (Holistic with refineFaceLandmarks:false uses standard 468)
+      const FACE_IDX = {
+        NOSE_TIP: 1,
+        FOREHEAD: 10, // top center
+        CHIN: 152,
+        L_EYE_L: 33, // left eye outer corner
+        L_EYE_R: 133, // left eye inner corner
+        L_EYE_TOP: 159,
+        L_EYE_BOT: 145,
+        R_EYE_L: 362,
+        R_EYE_R: 263,
+        R_EYE_TOP: 386,
+        R_EYE_BOT: 374,
+        L_TEMPLE: 234,
+        R_TEMPLE: 454,
+        L_BROW_OUT: 70,
+        R_BROW_OUT: 300,
+        L_BROW_TOP: 105, // above left brow arch
+        R_BROW_TOP: 334, // above right brow arch
+        GLABELLA: 168, // between eyes
+        L_CHEEK: 116,
+        R_CHEEK: 345,
+      }
+
+      const FINGER_CHAINS = [
+        [0, 1, 2, 3, 4],
+        [0, 5, 6, 7, 8],
+        [0, 9, 10, 11, 12],
+        [0, 13, 14, 15, 16],
+        [0, 17, 18, 19, 20],
+      ]
+      const FINGER_TIPS = new Set([4, 8, 12, 16, 20])
+      const KNUCKLES = new Set([5, 9, 13, 17])
+
+      // ═══════════════════════════════════════════════════════════
+      // SHARED STATE
+      // ═══════════════════════════════════════════════════════════
+      // Detect mobile once — used throughout for perf tuning
+      const isMobile =
+        /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+        (navigator.maxTouchPoints > 1 && window.innerWidth < 1024)
+
+      const state = {
+        started: false,
+        screen: { w: 0, h: 0 },
+        toScreen: null,
+        fps: { count: 0, last: performance.now() },
+        segDebug: false,
+        expIndex: 0,
+        wingPos: { pos: null, scale: 1, active: false },
+        glbLoaded: false,
+        // Face landmarker (for Wolverine — kept from original)
+        faceLandmarker: null,
+        faceLandmarkerReady: false,
+        lastFaceMatrix: null,
+      }
+
+      // Mobile shadow limiter — called once per frame per ctx
+      // On mobile we patch the ctx to suppress expensive shadow blurs
+      function applyMobileShadow(ctx, color, blur) {
+        ctx.shadowColor = color
+        ctx.shadowBlur = isMobile ? Math.min(blur, 6) : blur
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // DOM
+      // ═══════════════════════════════════════════════════════════
+      const splash = document.getElementById("splash")
+      const video = document.getElementById("video")
+      const wingCanvas = document.getElementById("wing-canvas")
+      const wingCompCanvas = document.getElementById("wing-comp-canvas")
+      const personCanvas = document.getElementById("person-canvas")
+      const maskCanvas = document.getElementById("mask-canvas")
+      const maskCompCanvas = document.getElementById("mask-comp-canvas")
+      const overlayCanvas = document.getElementById("overlay-canvas")
+      const wctx = wingCompCanvas.getContext("2d")
+      const pctx = personCanvas.getContext("2d")
+      const mctx = maskCompCanvas.getContext("2d")
+      const octx = overlayCanvas.getContext("2d")
+
+      const $ = (id) => document.getElementById(id)
+      const camDot = $("cam-dot"),
+        camStatus = $("cam-status")
+      const mpDot = $("mp-dot"),
+        mpStatus = $("mp-status")
+      const fpsDot = $("fps-dot"),
+        fpsStatus = $("fps-status")
+      const segDot = $("seg-dot"),
+        segStatus = $("seg-status")
+      const expDot = $("exp-dot"),
+        expStatus = $("exp-status")
+      const expNameEl = $("exp-name")
+
+      // ═══════════════════════════════════════════════════════════
+      // THREE.JS — WING RENDERER + MASK RENDERER
+      // ═══════════════════════════════════════════════════════════
+      let wingRenderer,
+        wingScene,
+        wingCamera,
+        wingGroup = null
+      let maskRenderer,
+        maskScene,
+        maskCamera,
+        maskGroup = null
+      let maskGlbLoaded = false
+
+      function initThree() {
+        // ── Wing renderer ──
+        const AA = !isMobile
+        const DPR = isMobile
+          ? Math.min(window.devicePixelRatio, 1.5)
+          : window.devicePixelRatio
+        wingRenderer = new THREE.WebGLRenderer({
+          canvas: wingCanvas,
+          alpha: true,
+          antialias: AA,
+        })
+        wingRenderer.setPixelRatio(DPR)
+        wingRenderer.setSize(window.innerWidth, window.innerHeight)
+        wingScene = new THREE.Scene()
+        wingCamera = new THREE.PerspectiveCamera(
+          60,
+          window.innerWidth / window.innerHeight,
+          0.01,
+          200,
+        )
+        wingCamera.position.set(0, 0, 5)
+        wingScene.add(new THREE.AmbientLight(0x334455, 1.2))
+        const wKey = new THREE.DirectionalLight(0x88ccff, 1.8)
+        wKey.position.set(0, 2, 3)
+        wingScene.add(wKey)
+        const wRim = new THREE.DirectionalLight(0x00e5ff, 1.0)
+        wRim.position.set(0, -1, -2)
+        wingScene.add(wRim)
+        loadWingsGLB()
+
+        // ── Mask renderer ──
+        maskRenderer = new THREE.WebGLRenderer({
+          canvas: maskCanvas,
+          alpha: true,
+          antialias: AA,
+        })
+        maskRenderer.setPixelRatio(DPR)
+        maskRenderer.setSize(window.innerWidth, window.innerHeight)
+        maskScene = new THREE.Scene()
+        maskCamera = new THREE.PerspectiveCamera(
+          63,
+          window.innerWidth / window.innerHeight,
+          0.01,
+          1000,
+        )
+        maskCamera.position.set(0, 0, 0)
+        maskScene.add(new THREE.AmbientLight(0x888888, 1.2))
+        const mKey = new THREE.DirectionalLight(0xffffff, 2.0)
+        mKey.position.set(0, 1, 1)
+        maskScene.add(mKey)
+        const mRim = new THREE.DirectionalLight(0x334466, 1.0)
+        mRim.position.set(-1, -0.5, -1)
+        maskScene.add(mRim)
+        loadMaskGLB()
+
+        // ── Shared render loop ──
+        ;(function loop() {
+          requestAnimationFrame(loop)
+          const t = performance.now() / 1000
+          if (wingGroup && wingGroup.visible) {
+            wingGroup.rotation.z = Math.sin(t * 2.2) * 0.04
+            wingGroup.rotation.x = Math.sin(t * 1.6) * 0.02
+          }
+          wingRenderer.render(wingScene, wingCamera)
+          maskRenderer.render(maskScene, maskCamera)
+        })()
+      }
+
+      function loadWingsGLB() {
+        const s = document.createElement("script")
+        s.src =
+          "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"
+        s.onload = () => {
+          new THREE.GLTFLoader().load(
+            "Wings.glb",
+            (gltf) => {
+              const model = gltf.scene
+              const box = new THREE.Box3().setFromObject(model)
+              const size = new THREE.Vector3()
+              box.getSize(size)
+              const sc = 4.0 / Math.max(size.x, size.y, size.z)
+              model.scale.setScalar(sc)
+              const center = new THREE.Vector3()
+              box.getCenter(center)
+              model.position.sub(center.multiplyScalar(sc))
+              model.traverse((c) => {
+                if (c.isMesh) {
+                  c.material = c.material.clone()
+                  c.material.emissive = new THREE.Color(0x001133)
+                  c.material.emissiveIntensity = 0.35
+                }
+              })
+              wingGroup = new THREE.Group()
+              wingGroup.add(model)
+              wingGroup.visible = false
+              wingScene.add(wingGroup)
+              state.glbLoaded = true
+            },
+            null,
+            () => buildFallbackWings(),
+          )
+        }
+        s.onerror = buildFallbackWings
+        document.head.appendChild(s)
+      }
+
+      function buildFallbackWings() {
+        wingGroup = new THREE.Group()
+        const mat = new THREE.MeshStandardMaterial({
+          color: 0x0055aa,
+          emissive: new THREE.Color(0x001133),
+          emissiveIntensity: 0.6,
+          roughness: 0.3,
+          metalness: 0.8,
+          transparent: true,
+          opacity: 0.9,
+          side: THREE.DoubleSide,
+        })
+        const gm = new THREE.MeshStandardMaterial({
+          color: 0x00e5ff,
+          emissive: new THREE.Color(0x00e5ff),
+          emissiveIntensity: 2.5,
+          roughness: 0,
+          metalness: 0,
+          transparent: true,
+          opacity: 0.85,
+        })
+        ;[[-1], [1]].forEach(([sign]) => {
+          ;[
+            { len: 1.0, w: 0.22, z: sign * 0.18 },
+            { len: 1.4, w: 0.18, z: sign * 0.5 },
+            { len: 1.1, w: 0.14, z: sign * 0.85 },
+          ].forEach(({ len, w, z }) => {
+            const sh = new THREE.Shape()
+            sh.moveTo(-w * 0.5, 0)
+            sh.lineTo(w * 0.5, 0)
+            sh.lineTo(w * 0.12, len)
+            sh.lineTo(-w * 0.12, len)
+            sh.closePath()
+            const m = new THREE.Mesh(
+              new THREE.ExtrudeGeometry(sh, {
+                depth: 0.02,
+                bevelEnabled: false,
+              }),
+              mat,
+            )
+            m.rotation.z = z
+            const sp = new THREE.Mesh(
+              new THREE.BoxGeometry(0.016, len * 0.88, 0.016),
+              gm,
+            )
+            sp.position.set(0, len * 0.44, 0.012)
+            m.add(sp)
+            wingGroup.add(m)
+          })
+        })
+        wingGroup.visible = false
+        wingScene.add(wingGroup)
+        state.glbLoaded = true
+      }
+
+      function loadMaskGLB() {
+        function tryLoad() {
+          if (!THREE.GLTFLoader) {
+            setTimeout(tryLoad, 300)
+            return
+          }
+          new THREE.GLTFLoader().load(
+            "Mask.glb",
+            (gltf) => {
+              const model = gltf.scene
+              const box = new THREE.Box3().setFromObject(model)
+              const size = new THREE.Vector3()
+              box.getSize(size)
+              const sc = 18.0 / Math.max(size.x, size.y, size.z)
+              model.scale.setScalar(sc)
+              const center = new THREE.Vector3()
+              box.getCenter(center)
+              model.position.sub(center.multiplyScalar(sc))
+              maskGroup = new THREE.Group()
+              maskGroup.add(model)
+              maskGroup.visible = false
+              maskGroup.matrixAutoUpdate = false
+              maskScene.add(maskGroup)
+              maskGlbLoaded = true
+            },
+            null,
+            () => {
+              maskGlbLoaded = true
+            },
+          )
+        }
+        tryLoad()
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // COORDINATE HELPERS
+      // ═══════════════════════════════════════════════════════════
+      function buildCoordMapper(vw, vh, cw, ch) {
+        const va = vw / vh,
+          ca = cw / ch
+        let sx, sy, ox, oy
+        if (va > ca) {
+          sy = ch
+          sx = ch * va
+          ox = (cw - sx) / 2
+          oy = 0
+        } else {
+          sx = cw
+          sy = cw / va
+          ox = 0
+          oy = (ch - sy) / 2
+        }
+        return (nx, ny, mirror = true) => ({
+          x: ox + (mirror ? 1 - nx : nx) * sx,
+          y: oy + ny * sy,
+        })
+      }
+
+      function screenToWorld(nx, ny, depth, cam) {
+        const v = new THREE.Vector3((1 - nx) * 2 - 1, -(ny * 2 - 1), 0.5)
+        v.unproject(cam)
+        return cam.position
+          .clone()
+          .add(v.sub(cam.position).normalize().multiplyScalar(depth))
+      }
+
+      // Helper: average of face landmark subset
+      function faceAvg(face, indices) {
+        let x = 0,
+          y = 0,
+          z = 0
+        for (const i of indices) {
+          x += face[i].x
+          y += face[i].y
+          z += face[i].z || 0
+        }
+        return {
+          x: x / indices.length,
+          y: y / indices.length,
+          z: z / indices.length,
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // WING POSITIONING
+      // ═══════════════════════════════════════════════════════════
+      function updateWingPosition(pose) {
+        if (!pose || !state.glbLoaded || !wingGroup) {
+          if (wingGroup) wingGroup.visible = false
+          return
+        }
+        const ls = pose[POSE_IDX.L_SHOULDER],
+          rs = pose[POSE_IDX.R_SHOULDER]
+        if (!ls || !rs) {
+          wingGroup.visible = false
+          return
+        }
+        const mx = (ls.x + rs.x) / 2,
+          my = (ls.y + rs.y) / 2
+        const sw = Math.abs(rs.x - ls.x)
+        const sc = sw * 8.0
+        const target = screenToWorld(mx, my, 5.8, wingCamera)
+        const wp = state.wingPos
+        if (!wp.active) {
+          wp.pos = target.clone()
+          wp.scale = sc
+          wp.active = true
+        } else {
+          wp.pos.lerp(target, 0.12)
+          wp.scale += (sc - wp.scale) * 0.12
+        }
+        wingGroup.position.copy(wp.pos)
+        wingGroup.scale.setScalar(wp.scale)
+        wingGroup.visible = true
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // OCCLUSION COMPOSITE
+      // ═══════════════════════════════════════════════════════════
+      function compositeWings(segMask, showWings) {
+        const W = state.screen.w,
+          H = state.screen.h
+        wctx.clearRect(0, 0, W, H)
+        if (showWings) {
+          wctx.drawImage(wingCanvas, 0, 0, W, H)
+          if (segMask) {
+            wctx.globalCompositeOperation = "destination-out"
+            wctx.save()
+            wctx.translate(W, 0)
+            wctx.scale(-1, 1)
+            wctx.drawImage(segMask, 0, 0, W, H)
+            wctx.restore()
+            wctx.globalCompositeOperation = "source-over"
+          }
+        }
+        pctx.clearRect(0, 0, W, H)
+        if (segMask && state.segDebug) {
+          pctx.save()
+          pctx.translate(W, 0)
+          pctx.scale(-1, 1)
+          pctx.drawImage(segMask, 0, 0, W, H)
+          pctx.restore()
+          pctx.globalCompositeOperation = "source-in"
+          pctx.fillStyle = "rgba(0,255,100,.35)"
+          pctx.fillRect(0, 0, W, H)
+          pctx.globalCompositeOperation = "source-over"
+        }
+        segDot.className = segMask
+          ? "hud-dot" + (state.segDebug ? " yellow" : "")
+          : "hud-dot off"
+        segStatus.textContent = segMask
+          ? "SEG " + (state.segDebug ? "[DEBUG]" : "✓")
+          : "SEG —"
+      }
+
+      function compositeMask(active) {
+        const W = state.screen.w,
+          H = state.screen.h
+        mctx.clearRect(0, 0, W, H)
+        if (active && maskGlbLoaded) mctx.drawImage(maskCanvas, 0, 0, W, H)
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // FACE LANDMARKER (Wolverine mask — kept from original)
+      // ═══════════════════════════════════════════════════════════
+      async function initFaceLandmarker() {
+        try {
+          const { FaceLandmarker, FilesetResolver } =
+            await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs")
+          const filesetResolver = await FilesetResolver.forVisionTasks(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm",
+          )
+          state.faceLandmarker = await FaceLandmarker.createFromOptions(
+            filesetResolver,
+            {
+              baseOptions: {
+                modelAssetPath:
+                  "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+                delegate: "GPU",
+              },
+              outputFaceBlendshapes: false,
+              outputFacialTransformationMatrixes: true,
+              runningMode: "VIDEO",
+              numFaces: 1,
+            },
+          )
+          state.faceLandmarkerReady = true
+        } catch (err) {
+          console.error("FaceLandmarker init failed:", err)
+          state.faceLandmarkerReady = false
+          state.faceLandmarker = null
+        }
+      }
+
+      let _lastFaceTs = -1
+      function runFaceDetection() {
+        if (!state.faceLandmarkerReady || !state.faceLandmarker) return
+        if (!video.videoWidth || video.readyState < 2) return
+        const now = performance.now()
+        if (now <= _lastFaceTs) return
+        _lastFaceTs = now
+        try {
+          const results = state.faceLandmarker.detectForVideo(video, now)
+          if (results.facialTransformationMatrixes?.length > 0) {
+            state.lastFaceMatrix = results.facialTransformationMatrixes[0].data
+          } else {
+            state.lastFaceMatrix = null
+          }
+        } catch (e) {
+          state.lastFaceMatrix = null
+        }
+      }
+
+      function applyFaceMatrix() {
+        if (!maskGroup || !maskGlbLoaded) return
+        if (!state.lastFaceMatrix) {
+          maskGroup.visible = false
+          return
+        }
+        const d = state.lastFaceMatrix
+        const m = new THREE.Matrix4()
+        m.set(
+          -d[0],
+          d[4],
+          -d[8],
+          -d[12],
+          -d[1],
+          d[5],
+          -d[9],
+          -d[13],
+          -d[2],
+          d[6],
+          -d[10],
+          d[14],
+          d[3],
+          d[7],
+          d[11],
+          d[15],
+        )
+        maskGroup.matrix.copy(m)
+        maskGroup.matrixAutoUpdate = false
+        maskGroup.visible = true
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // EXPERIENCE 1 — ANGEL WINGS (original)
+      // ═══════════════════════════════════════════════════════════════════════════
+      const EXP_WINGS = {
+        name: "🪶  ANGEL WINGS",
+        useWings: true,
+        useMask: false,
+        useFace: false,
+        onFrame(results, ctx, t) {
+          const pose = results.poseLandmarks
+          if (!pose || !state.toScreen) return
+          const ls = state.toScreen(
+            pose[POSE_IDX.L_SHOULDER].x,
+            pose[POSE_IDX.L_SHOULDER].y,
+          )
+          const rs = state.toScreen(
+            pose[POSE_IDX.R_SHOULDER].x,
+            pose[POSE_IDX.R_SHOULDER].y,
+          )
+          const pulse = 0.5 + Math.sin(t * 2.5) * 0.3
+          ;[ls, rs].forEach((p) => {
+            const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 30)
+            g.addColorStop(0, "rgba(0,229,255," + 0.6 * pulse + ")")
+            g.addColorStop(1, "rgba(0,229,255,0)")
+            ctx.fillStyle = g
+            ctx.beginPath()
+            ctx.arc(p.x, p.y, 30, 0, Math.PI * 2)
+            ctx.fill()
+          })
+          expDot.className = "hud-dot"
+          expStatus.textContent = "WINGS ✓"
+        },
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // EXPERIENCE 2 — ARC REACTOR HAND HUD (original)
+      // ═══════════════════════════════════════════════════════════════════════════
+      const particles = { left: [], right: [] }
+
+      function spawnAndUpdateParticles(cx, cy, r, side) {
+        const arr = particles[side]
+        if (arr.length < (isMobile ? 8 : 20) && Math.random() < 0.4) {
+          const a = Math.random() * Math.PI * 2
+          arr.push({
+            x: cx + Math.cos(a) * r,
+            y: cy + Math.sin(a) * r,
+            vx: (Math.random() - 0.5) * 3,
+            vy: (Math.random() - 1) * 3,
+            life: 1,
+            decay: 0.035 + Math.random() * 0.04,
+            size: 1.5 + Math.random() * 3,
+            cyan: Math.random() < 0.6,
+          })
+        }
+        for (let i = arr.length - 1; i >= 0; i--) {
+          const p = arr[i]
+          p.x += p.vx
+          p.y += p.vy
+          p.vy += 0.1
+          p.life -= p.decay
+          if (p.life <= 0) arr.splice(i, 1)
+        }
+      }
+
+      function drawArcReactor(ctx, hand, side, t) {
+        if (!hand || !state.toScreen) return
+        const ts = state.toScreen
+        const palm = ts(
+          hand[HAND_IDX.MIDDLE_MCP].x,
+          hand[HAND_IDX.MIDDLE_MCP].y,
+        )
+        const wrist = ts(hand[HAND_IDX.WRIST].x, hand[HAND_IDX.WRIST].y)
+        const midTip = ts(
+          hand[HAND_IDX.MIDDLE_TIP].x,
+          hand[HAND_IDX.MIDDLE_TIP].y,
+        )
+        const r = Math.hypot(midTip.x - wrist.x, midTip.y - wrist.y) * 0.36
+        if (r < 12) return
+        const cx = palm.x,
+          cy = palm.y
+        const CYAN = "#00e5ff",
+          ORG = "#ff6600"
+        ctx.save()
+        FINGER_CHAINS.forEach((chain) => {
+          for (let i = 0; i < chain.length - 1; i++) {
+            const pa = ts(hand[chain[i]].x, hand[chain[i]].y)
+            const pb = ts(hand[chain[i + 1]].x, hand[chain[i + 1]].y)
+            const ratio = i / (chain.length - 2)
+            const g = ctx.createLinearGradient(pa.x, pa.y, pb.x, pb.y)
+            g.addColorStop(0, "rgba(0,229,255," + (0.75 - ratio * 0.2) + ")")
+            g.addColorStop(
+              1,
+              "rgba(255," +
+                Math.round(80 + ratio * 150) +
+                ",0," +
+                (0.5 + ratio * 0.45) +
+                ")",
+            )
+            ctx.strokeStyle = g
+            ctx.lineWidth = 1.6 + ratio * 0.9
+            ctx.shadowColor = CYAN
+            ctx.shadowBlur = 7
+            ctx.beginPath()
+            ctx.moveTo(pa.x, pa.y)
+            ctx.lineTo(pb.x, pb.y)
+            ctx.stroke()
+          }
+        })
+        hand.forEach((lm, i) => {
+          const p = ts(lm.x, lm.y)
+          const tip = FINGER_TIPS.has(i),
+            knuc = KNUCKLES.has(i)
+          const rad = tip ? 5.5 : knuc ? 4 : i === 0 ? 6.5 : 3
+          const col = tip ? ORG : CYAN
+          ctx.fillStyle = col
+          ctx.shadowColor = col
+          ctx.shadowBlur = tip ? 16 : 9
+          ctx.globalAlpha = 0.92
+          ctx.beginPath()
+          ctx.arc(p.x, p.y, rad, 0, Math.PI * 2)
+          ctx.fill()
+        })
+        ctx.globalAlpha = 1
+        ctx.shadowBlur = 0
+        const SEG = 28,
+          GAP = 0.07
+        ctx.strokeStyle = CYAN
+        ctx.lineWidth = 1.5
+        ctx.shadowColor = CYAN
+        ctx.shadowBlur = 9
+        for (let i = 0; i < SEG; i++) {
+          const a0 = (i / SEG) * Math.PI * 2 + t * 0.45
+          const a1 = ((i + 1) / SEG) * Math.PI * 2 - GAP + t * 0.45
+          ctx.globalAlpha = i % 7 === 0 ? 1.0 : 0.6
+          ctx.beginPath()
+          ctx.arc(cx, cy, r * 1.18, a0, a1)
+          ctx.stroke()
+        }
+        ctx.strokeStyle = ORG
+        ctx.lineWidth = 2.2
+        ctx.shadowColor = ORG
+        ctx.shadowBlur = 14
+        for (let i = 0; i < 6; i++) {
+          if (i % 2 === 0) continue
+          const a0 = (i / 6) * Math.PI * 2 - t * 2.0,
+            a1 = ((i + 0.65) / 6) * Math.PI * 2 - t * 2.0
+          ctx.globalAlpha = 0.85
+          ctx.beginPath()
+          ctx.arc(cx, cy, r * 0.84, a0, a1)
+          ctx.stroke()
+        }
+        ctx.strokeStyle = "rgba(0,229,255,0.65)"
+        ctx.lineWidth = 1
+        ctx.shadowBlur = 5
+        for (let i = 0; i < 14; i++) {
+          const a0 = (i / 14) * Math.PI * 2 + t * 3.5,
+            a1 = a0 + Math.PI / 16
+          ctx.globalAlpha = 0.7
+          ctx.beginPath()
+          ctx.arc(cx, cy, r * 0.62, a0, a1)
+          ctx.stroke()
+        }
+        ctx.shadowBlur = 5
+        for (let i = 0; i < 24; i++) {
+          const a = (i / 24) * Math.PI * 2 + t * 0.45,
+            major = i % 6 === 0
+          ctx.strokeStyle = major ? "#ffffff" : CYAN
+          ctx.lineWidth = major ? 2.5 : 1
+          ctx.globalAlpha = major ? 1.0 : 0.55
+          const r0 = r * 1.21,
+            r1 = r * (major ? 1.37 : 1.29)
+          ctx.beginPath()
+          ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0)
+          ctx.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1)
+          ctx.stroke()
+        }
+        const scanA = (t * 2.4) % (Math.PI * 2)
+        ctx.globalAlpha = 0.22
+        ctx.fillStyle = "rgba(0,229,255,0.18)"
+        ctx.shadowBlur = 0
+        ctx.beginPath()
+        ctx.moveTo(cx, cy)
+        ctx.arc(cx, cy, r * 1.15, scanA, scanA + Math.PI * 0.42)
+        ctx.closePath()
+        ctx.fill()
+        ctx.globalAlpha = 0.75
+        ctx.strokeStyle = CYAN
+        ctx.lineWidth = 1.5
+        ctx.shadowColor = CYAN
+        ctx.shadowBlur = 12
+        ctx.beginPath()
+        ctx.moveTo(cx, cy)
+        ctx.lineTo(
+          cx + Math.cos(scanA) * r * 1.18,
+          cy + Math.sin(scanA) * r * 1.18,
+        )
+        ctx.stroke()
+        const pulse = 0.8 + Math.sin(t * 4.2) * 0.2,
+          orbR = r * 0.21 * pulse
+        const coroG = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.5)
+        coroG.addColorStop(0, "rgba(0,229,255," + 0.22 * pulse + ")")
+        coroG.addColorStop(1, "rgba(0,229,255,0)")
+        ctx.globalAlpha = 1
+        ctx.fillStyle = coroG
+        ctx.shadowBlur = 0
+        ctx.beginPath()
+        ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2)
+        ctx.fill()
+        const coreG = ctx.createRadialGradient(cx, cy, 0, cx, cy, orbR)
+        coreG.addColorStop(0, "rgba(255,230,90," + 0.98 * pulse + ")")
+        coreG.addColorStop(0.45, "rgba(255,90,0," + 0.85 * pulse + ")")
+        coreG.addColorStop(1, "rgba(0,180,255,0)")
+        ctx.fillStyle = coreG
+        ctx.shadowColor = "#ff8800"
+        ctx.shadowBlur = 24
+        ctx.beginPath()
+        ctx.arc(cx, cy, orbR, 0, Math.PI * 2)
+        ctx.fill()
+        spawnAndUpdateParticles(cx, cy, r * 1.05, side)
+        ctx.shadowBlur = 10
+        particles[side].forEach((p) => {
+          ctx.globalAlpha = p.life * 0.9
+          ctx.fillStyle = p.cyan ? CYAN : ORG
+          ctx.shadowColor = p.cyan ? CYAN : ORG
+          ctx.beginPath()
+          ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2)
+          ctx.fill()
+        })
+        ctx.globalAlpha = 0.7
+        ctx.strokeStyle = CYAN
+        ctx.lineWidth = 1.8
+        ctx.shadowBlur = 7
+        const bR = r * 1.55,
+          bS = r * 0.22
+        ;[
+          [1, 1],
+          [1, -1],
+          [-1, 1],
+          [-1, -1],
+        ].forEach(([sx, sy]) => {
+          const bx = cx + sx * bR * 0.7,
+            by = cy + sy * bR * 0.7
+          ctx.beginPath()
+          ctx.moveTo(bx, by - sy * bS)
+          ctx.lineTo(bx, by)
+          ctx.lineTo(bx + sx * bS, by)
+          ctx.stroke()
+        })
+        const angle = Math.round(
+          (Math.atan2(midTip.y - wrist.y, midTip.x - wrist.x) * 180) / Math.PI +
+            90,
+        )
+        ctx.shadowColor = CYAN
+        ctx.shadowBlur = 10
+        ctx.fillStyle = CYAN
+        ctx.textAlign = "center"
+        ctx.globalAlpha = 0.92
+        ctx.font = "bold " + Math.round(r * 0.28) + "px Courier New"
+        ctx.fillText(Math.abs(angle) + "°", cx + r * 1.8, cy + r * 0.1)
+        ctx.font = Math.round(r * 0.17) + "px Courier New"
+        ctx.globalAlpha = 0.75
+        const dots = ["", ".", "..", "..", ".", ""][Math.floor(t * 3) % 6]
+        ctx.fillText("SCAN" + dots, cx, cy + r * 1.65)
+        ctx.fillText(side.toUpperCase() + " HAND", cx, cy + r * 1.88)
+        ctx.restore()
+      }
+
+      const EXP_HAND_HUD = {
+        name: "⚡  ARC REACTOR",
+        useWings: false,
+        useMask: false,
+        useFace: false,
+        onFrame(results, ctx, t) {
+          drawArcReactor(ctx, results.leftHandLandmarks, "left", t)
+          drawArcReactor(ctx, results.rightHandLandmarks, "right", t)
+          const lh = !!results.leftHandLandmarks,
+            rh = !!results.rightHandLandmarks
+          expDot.className = "hud-dot " + (lh || rh ? "" : "off")
+          expStatus.textContent =
+            lh || rh
+              ? "HAND " + (lh ? "L✓" : "") + " " + (rh ? "R✓" : "")
+              : "RAISE YOUR HAND"
+        },
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // EXPERIENCE 3 — WOLVERINE (original)
+      // ═══════════════════════════════════════════════════════════════════════════
+      function drawWolverineClaws(ctx, hand, t) {
+        if (!hand || !state.toScreen) return
+        const ts = state.toScreen
+        const wrist = ts(hand[HAND_IDX.WRIST].x, hand[HAND_IDX.WRIST].y)
+        const iMcp = ts(hand[HAND_IDX.INDEX_MCP].x, hand[HAND_IDX.INDEX_MCP].y)
+        const mMcp = ts(
+          hand[HAND_IDX.MIDDLE_MCP].x,
+          hand[HAND_IDX.MIDDLE_MCP].y,
+        )
+        const rMcp = ts(hand[HAND_IDX.RING_MCP].x, hand[HAND_IDX.RING_MCP].y)
+        const midTip = ts(
+          hand[HAND_IDX.MIDDLE_TIP].x,
+          hand[HAND_IDX.MIDDLE_TIP].y,
+        )
+        const handLen = Math.hypot(midTip.x - wrist.x, midTip.y - wrist.y)
+        if (handLen < 30) return
+        const dx = mMcp.x - wrist.x,
+          dy = mMcp.y - wrist.y
+        const len = Math.hypot(dx, dy) || 1
+        const ux = dx / len,
+          uy = dy / len
+        const clawLen = handLen * 1.1,
+          baseW = handLen * 0.055
+        const anchors = [iMcp, mMcp, rMcp]
+        ctx.save()
+        anchors.forEach((anchor, i) => {
+          const spread = (i - 1) * 0.14
+          const cosS = Math.cos(spread),
+            sinS = Math.sin(spread)
+          const fdx = ux * cosS - uy * sinS,
+            fdy = ux * sinS + uy * cosS
+          const pdx = -fdy,
+            pdy = fdx
+          const tx = anchor.x + fdx * clawLen,
+            ty = anchor.y + fdy * clawLen
+          const grad = ctx.createLinearGradient(anchor.x, anchor.y, tx, ty)
+          grad.addColorStop(0, "rgba(180,190,200,0.95)")
+          grad.addColorStop(0.3, "rgba(240,245,255,0.98)")
+          grad.addColorStop(0.6, "rgba(160,170,180,0.92)")
+          grad.addColorStop(0.88, "rgba(200,210,220,0.85)")
+          grad.addColorStop(1, "rgba(220,230,240,0.3)")
+          ctx.fillStyle = grad
+          ctx.shadowColor = "rgba(200,220,255,0.6)"
+          ctx.shadowBlur = 8
+          ctx.beginPath()
+          ctx.moveTo(anchor.x + pdx * baseW, anchor.y + pdy * baseW)
+          ctx.lineTo(anchor.x - pdx * baseW, anchor.y - pdy * baseW)
+          ctx.lineTo(tx, ty)
+          ctx.closePath()
+          ctx.fill()
+          ctx.strokeStyle = "rgba(255,255,255,0.75)"
+          ctx.lineWidth = 1.2
+          ctx.shadowColor = "rgba(255,255,255,0.9)"
+          ctx.shadowBlur = 4
+          ctx.globalAlpha = 0.7
+          ctx.beginPath()
+          ctx.moveTo(anchor.x, anchor.y)
+          ctx.lineTo(
+            anchor.x + fdx * clawLen * 0.85,
+            anchor.y + fdy * clawLen * 0.85,
+          )
+          ctx.stroke()
+          ctx.strokeStyle = "rgba(60,70,80,0.5)"
+          ctx.lineWidth = 0.7
+          ctx.shadowBlur = 0
+          ctx.globalAlpha = 0.5
+          ctx.beginPath()
+          ctx.moveTo(anchor.x + fdx * 0.1, anchor.y + fdy * 0.1)
+          ctx.lineTo(tx, ty)
+          ctx.stroke()
+          ctx.globalAlpha = 0.5
+          ctx.shadowBlur = 0
+          const kg = ctx.createRadialGradient(
+            anchor.x,
+            anchor.y,
+            0,
+            anchor.x,
+            anchor.y,
+            baseW * 2.5,
+          )
+          kg.addColorStop(0, "rgba(180,200,255,0.55)")
+          kg.addColorStop(1, "rgba(0,0,0,0)")
+          ctx.fillStyle = kg
+          ctx.beginPath()
+          ctx.arc(anchor.x, anchor.y, baseW * 2.5, 0, Math.PI * 2)
+          ctx.fill()
+        })
+        ctx.globalAlpha = 1
+        ctx.restore()
+      }
+
+      const EXP_WOLVERINE = {
+        name: "⚡  WOLVERINE",
+        useWings: false,
+        useMask: true,
+        useFace: true,
+        onFrame(results, ctx, t) {
+          applyFaceMatrix()
+          drawWolverineClaws(ctx, results.leftHandLandmarks, t)
+          drawWolverineClaws(ctx, results.rightHandLandmarks, t)
+          const face = !!state.lastFaceMatrix,
+            lh = !!results.leftHandLandmarks,
+            rh = !!results.rightHandLandmarks
+          expDot.className = "hud-dot " + (face ? "" : "off")
+          expStatus.textContent =
+            "MASK " +
+            (face ? "✓" : "—") +
+            "  CLAWS L" +
+            (lh ? "✓" : "—") +
+            " R" +
+            (rh ? "✓" : "—")
+        },
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // EXPERIENCE 4 — IRON MAN CHEST ARC REACTOR
+      // ═══════════════════════════════════════════════════════════════════════════
+      const chestParticles = []
+
+      const EXP_IRONMAN_CHEST = {
+        name: "🔴  IRON MAN",
+        useWings: false,
+        useMask: false,
+        useFace: false,
+        onFrame(results, ctx, t) {
+          const pose = results.poseLandmarks
+          if (!pose || !state.toScreen) {
+            expDot.className = "hud-dot off"
+            expStatus.textContent = "STAND IN FRAME"
+            return
+          }
+          const ls = pose[POSE_IDX.L_SHOULDER],
+            rs = pose[POSE_IDX.R_SHOULDER]
+          if (!ls || !rs) return
+          const ts = state.toScreen
+          const lsp = ts(ls.x, ls.y),
+            rsp = ts(rs.x, rs.y)
+          const cx = (lsp.x + rsp.x) / 2
+          const cy =
+            (lsp.y + rsp.y) / 2 +
+            Math.hypot(rsp.x - lsp.x, rsp.y - lsp.y) * 0.55
+          const shoulderW = Math.hypot(rsp.x - lsp.x, rsp.y - lsp.y)
+          const R = shoulderW * 0.22
+          if (R < 10) return
+
+          ctx.save()
+
+          // ── Outer energy field ──
+          const fieldPulse = 0.7 + Math.sin(t * 2.8) * 0.3
+          const fieldG = ctx.createRadialGradient(
+            cx,
+            cy,
+            R * 0.5,
+            cx,
+            cy,
+            R * 2.8,
+          )
+          fieldG.addColorStop(0, `rgba(0,180,255,${0.12 * fieldPulse})`)
+          fieldG.addColorStop(0.5, `rgba(0,100,200,${0.06 * fieldPulse})`)
+          fieldG.addColorStop(1, "rgba(0,0,100,0)")
+          ctx.fillStyle = fieldG
+          ctx.shadowBlur = 0
+          ctx.beginPath()
+          ctx.arc(cx, cy, R * 2.8, 0, Math.PI * 2)
+          ctx.fill()
+
+          // ── Outer rotating ring ──
+          const SEG = 36
+          for (let i = 0; i < SEG; i++) {
+            const a0 = (i / SEG) * Math.PI * 2 + t * 0.6
+            const a1 = ((i + 0.7) / SEG) * Math.PI * 2 + t * 0.6
+            ctx.strokeStyle = i % 4 === 0 ? "#ffffff" : "#00aaff"
+            ctx.lineWidth = i % 4 === 0 ? 2.5 : 1.2
+            ctx.globalAlpha = i % 4 === 0 ? 0.9 : 0.45
+            ctx.shadowColor = "#00e5ff"
+            ctx.shadowBlur = 10
+            ctx.beginPath()
+            ctx.arc(cx, cy, R * 1.4, a0, a1)
+            ctx.stroke()
+          }
+
+          // ── Counter-rotating inner ring ──
+          for (let i = 0; i < 18; i++) {
+            const a0 = (i / 18) * Math.PI * 2 - t * 1.2
+            const a1 = a0 + Math.PI * 0.08
+            ctx.strokeStyle = "#ff6600"
+            ctx.lineWidth = 2.0
+            ctx.globalAlpha = 0.75
+            ctx.shadowColor = "#ff4400"
+            ctx.shadowBlur = 12
+            ctx.beginPath()
+            ctx.arc(cx, cy, R * 1.08, a0, a1)
+            ctx.stroke()
+          }
+
+          // ── Triangular reactor shape (arc reactor trademark) ──
+          ctx.globalAlpha = 0.9
+          ctx.shadowColor = "#00e5ff"
+          ctx.shadowBlur = 20
+          ctx.strokeStyle = "#00e5ff"
+          ctx.lineWidth = 2
+          const triR = R * 0.62
+          ctx.beginPath()
+          for (let i = 0; i < 3; i++) {
+            const a = (i / 3) * Math.PI * 2 - Math.PI / 2 + t * 0.3
+            if (i === 0)
+              ctx.moveTo(cx + Math.cos(a) * triR, cy + Math.sin(a) * triR)
+            else ctx.lineTo(cx + Math.cos(a) * triR, cy + Math.sin(a) * triR)
+          }
+          ctx.closePath()
+          ctx.stroke()
+
+          // ── Hexagonal inner ring ──
+          ctx.strokeStyle = "#4488ff"
+          ctx.lineWidth = 1.5
+          ctx.shadowBlur = 8
+          const hexR = R * 0.42
+          ctx.beginPath()
+          for (let i = 0; i < 6; i++) {
+            const a = (i / 6) * Math.PI * 2 + t * 0.5
+            if (i === 0)
+              ctx.moveTo(cx + Math.cos(a) * hexR, cy + Math.sin(a) * hexR)
+            else ctx.lineTo(cx + Math.cos(a) * hexR, cy + Math.sin(a) * hexR)
+          }
+          ctx.closePath()
+          ctx.stroke()
+
+          // ── Core glow ──
+          const cPulse = 0.85 + Math.sin(t * 5.0) * 0.15
+          const coreG = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 0.38)
+          coreG.addColorStop(0, `rgba(200,240,255,${cPulse})`)
+          coreG.addColorStop(0.3, `rgba(0,180,255,${0.9 * cPulse})`)
+          coreG.addColorStop(0.7, `rgba(0,80,200,${0.5 * cPulse})`)
+          coreG.addColorStop(1, "rgba(0,0,100,0)")
+          ctx.globalAlpha = 1
+          ctx.fillStyle = coreG
+          ctx.shadowColor = "#00e5ff"
+          ctx.shadowBlur = 30
+          ctx.beginPath()
+          ctx.arc(cx, cy, R * 0.38, 0, Math.PI * 2)
+          ctx.fill()
+
+          // ── Tick marks around outer ring ──
+          ctx.shadowBlur = 5
+          for (let i = 0; i < 48; i++) {
+            const a = (i / 48) * Math.PI * 2 + t * 0.6
+            const major = i % 6 === 0
+            ctx.strokeStyle = major ? "#ffffff" : "#0088cc"
+            ctx.lineWidth = major ? 2.5 : 1
+            ctx.globalAlpha = major ? 1.0 : 0.5
+            const r0 = R * 1.4,
+              r1 = R * (major ? 1.58 : 1.5)
+            ctx.beginPath()
+            ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0)
+            ctx.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1)
+            ctx.stroke()
+          }
+
+          // ── Energy stream lines to shoulders ──
+          ;[lsp, rsp].forEach((sh) => {
+            const streamG = ctx.createLinearGradient(cx, cy, sh.x, sh.y)
+            streamG.addColorStop(0, "rgba(0,229,255,0.6)")
+            streamG.addColorStop(1, "rgba(0,229,255,0)")
+            ctx.strokeStyle = streamG
+            ctx.lineWidth = 2
+            ctx.shadowColor = "#00e5ff"
+            ctx.shadowBlur = 12
+            ctx.globalAlpha =
+              0.5 + Math.sin(t * 3 + (sh === lsp ? 0 : 1)) * 0.25
+            ctx.beginPath()
+            ctx.moveTo(cx, cy)
+            ctx.lineTo(sh.x, sh.y)
+            ctx.stroke()
+          })
+
+          // ── Chest particles ──
+          if (
+            chestParticles.length < (isMobile ? 14 : 30) &&
+            Math.random() < 0.5
+          ) {
+            const a = Math.random() * Math.PI * 2
+            chestParticles.push({
+              x: cx + Math.cos(a) * R * 1.4,
+              y: cy + Math.sin(a) * R * 1.4,
+              vx: (Math.random() - 0.5) * 2,
+              vy: (Math.random() - 1.5) * 2.5,
+              life: 1,
+              decay: 0.025 + Math.random() * 0.03,
+              size: 2 + Math.random() * 3,
+              type: Math.floor(Math.random() * 3),
+            })
+          }
+          const pcols = ["#00e5ff", "#ff6600", "#ffffff"]
+          for (let i = chestParticles.length - 1; i >= 0; i--) {
+            const p = chestParticles[i]
+            p.x += p.vx
+            p.y += p.vy
+            p.vy -= 0.05
+            p.life -= p.decay
+            if (p.life <= 0) {
+              chestParticles.splice(i, 1)
+              continue
+            }
+            ctx.globalAlpha = p.life * 0.85
+            ctx.fillStyle = pcols[p.type]
+            ctx.shadowColor = pcols[p.type]
+            ctx.shadowBlur = 8
+            ctx.beginPath()
+            ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2)
+            ctx.fill()
+          }
+
+          ctx.restore()
+          expDot.className = "hud-dot"
+          expStatus.textContent = "REACTOR ONLINE"
+        },
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // EXPERIENCE 5 — THANOS GAUNTLET (glowing hand overlay)
+      // ═══════════════════════════════════════════════════════════════════════════
+      const EXP_THANOS = {
+        name: "💎  THANOS",
+        useWings: false,
+        useMask: false,
+        useFace: false,
+        onFrame(results, ctx, t) {
+          const lh = results.leftHandLandmarks
+          const rh = results.rightHandLandmarks
+          if (!lh && !rh) {
+            expDot.className = "hud-dot off"
+            expStatus.textContent = "RAISE YOUR HAND"
+            return
+          }
+          if (lh) drawThanosGauntlet(ctx, lh, "left", t)
+          if (rh) drawThanosGauntlet(ctx, rh, "right", t)
+          expDot.className = "hud-dot yellow"
+          expStatus.textContent =
+            "GAUNTLET " + (lh ? "L✓" : "") + " " + (rh ? "R✓" : "")
+        },
+      }
+
+      // Infinity stone colors
+      const GEM_COLORS = [
+        {
+          name: "Soul",
+          color: "#ff7700",
+          glow: "rgba(255,100,0,",
+          ring: "rgba(255,140,0,",
+        },
+        {
+          name: "Mind",
+          color: "#ffee00",
+          glow: "rgba(255,220,0,",
+          ring: "rgba(255,240,80,",
+        },
+        {
+          name: "Space",
+          color: "#4488ff",
+          glow: "rgba(30,80,255,",
+          ring: "rgba(80,140,255,",
+        },
+        {
+          name: "Reality",
+          color: "#ff2200",
+          glow: "rgba(255,30,0,",
+          ring: "rgba(255,80,60,",
+        },
+        {
+          name: "Power",
+          color: "#aa00ff",
+          glow: "rgba(150,0,255,",
+          ring: "rgba(180,60,255,",
+        },
+        {
+          name: "Time",
+          color: "#00ff88",
+          glow: "rgba(0,220,120,",
+          ring: "rgba(0,255,140,",
+        },
+      ]
+
+      function drawThanosGauntlet(ctx, hand, side, t) {
+        if (!state.toScreen) return
+        const ts = state.toScreen
+        ctx.save()
+
+        // Get key hand points
+        const wrist = ts(hand[HAND_IDX.WRIST].x, hand[HAND_IDX.WRIST].y)
+        const palm = ts(
+          hand[HAND_IDX.MIDDLE_MCP].x,
+          hand[HAND_IDX.MIDDLE_MCP].y,
+        )
+        const midTip = ts(
+          hand[HAND_IDX.MIDDLE_TIP].x,
+          hand[HAND_IDX.MIDDLE_TIP].y,
+        )
+        const handLen = Math.hypot(midTip.x - wrist.x, midTip.y - wrist.y)
+        if (handLen < 30) {
+          ctx.restore()
+          return
+        }
+
+        const fingerSize = handLen * 0.12
+
+        // ── Golden metallic base over each bone segment ──
+        FINGER_CHAINS.forEach((chain, fi) => {
+          for (let i = 0; i < chain.length - 1; i++) {
+            const pa = ts(hand[chain[i]].x, hand[chain[i]].y)
+            const pb = ts(hand[chain[i + 1]].x, hand[chain[i + 1]].y)
+            const dx = pb.x - pa.x,
+              dy = pb.y - pa.y
+            const segLen = Math.hypot(dx, dy)
+            if (segLen < 1) continue
+            const nx = -dy / segLen,
+              ny = dx / segLen
+            const w = fingerSize * (0.45 - i * 0.04)
+
+            // Gold gradient along segment
+            const g = ctx.createLinearGradient(pa.x, pa.y, pb.x, pb.y)
+            g.addColorStop(0, "rgba(200,160,40,0.95)")
+            g.addColorStop(0.3, "rgba(255,210,80,0.98)")
+            g.addColorStop(0.7, "rgba(180,130,20,0.95)")
+            g.addColorStop(1, "rgba(140,100,10,0.88)")
+
+            ctx.fillStyle = g
+            ctx.shadowColor = "#ffcc00"
+            ctx.shadowBlur = 10
+            ctx.beginPath()
+            ctx.moveTo(pa.x + nx * w, pa.y + ny * w)
+            ctx.lineTo(pa.x - nx * w, pa.y - ny * w)
+            ctx.lineTo(pb.x - nx * w * 0.7, pb.y - ny * w * 0.7)
+            ctx.lineTo(pb.x + nx * w * 0.7, pb.y + ny * w * 0.7)
+            ctx.closePath()
+            ctx.fill()
+
+            // Dark edge lines (armor seam)
+            ctx.strokeStyle = "rgba(80,50,0,0.7)"
+            ctx.lineWidth = 1
+            ctx.shadowBlur = 0
+            ctx.globalAlpha = 0.6
+            ctx.beginPath()
+            ctx.moveTo(pa.x + nx * w, pa.y + ny * w)
+            ctx.lineTo(pb.x + nx * w * 0.7, pb.y + ny * w * 0.7)
+            ctx.moveTo(pa.x - nx * w, pa.y - ny * w)
+            ctx.lineTo(pb.x - nx * w * 0.7, pb.y - ny * w * 0.7)
+            ctx.stroke()
+          }
+        })
+
+        // ── Gem stones at each knuckle + wrist ──
+        const gemPositions = [
+          ts(hand[HAND_IDX.WRIST].x, hand[HAND_IDX.WRIST].y),
+          ts(hand[HAND_IDX.INDEX_MCP].x, hand[HAND_IDX.INDEX_MCP].y),
+          ts(hand[HAND_IDX.MIDDLE_MCP].x, hand[HAND_IDX.MIDDLE_MCP].y),
+          ts(hand[HAND_IDX.RING_MCP].x, hand[HAND_IDX.RING_MCP].y),
+          ts(hand[HAND_IDX.PINKY_MCP].x, hand[HAND_IDX.PINKY_MCP].y),
+          ts(hand[HAND_IDX.THUMB_MCP].x, hand[HAND_IDX.THUMB_MCP].y),
+        ]
+
+        gemPositions.forEach((gp, gi) => {
+          const gem = GEM_COLORS[gi % GEM_COLORS.length]
+          const pulse = 0.7 + Math.sin(t * 3.5 + gi * 1.1) * 0.3
+          const gemR = fingerSize * (gi === 0 ? 0.75 : 0.55)
+
+          // Glow aura
+          const aura = ctx.createRadialGradient(
+            gp.x,
+            gp.y,
+            0,
+            gp.x,
+            gp.y,
+            gemR * 3,
+          )
+          aura.addColorStop(0, gem.glow + 0.5 * pulse + ")")
+          aura.addColorStop(1, gem.glow + "0)")
+          ctx.globalAlpha = 1
+          ctx.fillStyle = aura
+          ctx.shadowBlur = 0
+          ctx.beginPath()
+          ctx.arc(gp.x, gp.y, gemR * 3, 0, Math.PI * 2)
+          ctx.fill()
+
+          // Gem body (octagon-ish via arc with slight polygon)
+          ctx.shadowColor = gem.color
+          ctx.shadowBlur = 18 * pulse
+          ctx.fillStyle = gem.color
+          ctx.globalAlpha = 0.92 * pulse
+          ctx.beginPath()
+          for (let k = 0; k < 8; k++) {
+            const a = (k / 8) * Math.PI * 2 + t * 0.8
+            const r = gemR * (k % 2 === 0 ? 1.0 : 0.75)
+            if (k === 0)
+              ctx.moveTo(gp.x + Math.cos(a) * r, gp.y + Math.sin(a) * r)
+            else ctx.lineTo(gp.x + Math.cos(a) * r, gp.y + Math.sin(a) * r)
+          }
+          ctx.closePath()
+          ctx.fill()
+
+          // Gem highlight
+          ctx.fillStyle = "rgba(255,255,255,0.7)"
+          ctx.shadowBlur = 0
+          ctx.globalAlpha = 0.65
+          ctx.beginPath()
+          ctx.ellipse(
+            gp.x - gemR * 0.2,
+            gp.y - gemR * 0.25,
+            gemR * 0.3,
+            gemR * 0.2,
+            -0.5,
+            0,
+            Math.PI * 2,
+          )
+          ctx.fill()
+
+          // Outer ring
+          ctx.strokeStyle = gem.ring + "0.8)"
+          ctx.lineWidth = 1.5
+          ctx.shadowColor = gem.color
+          ctx.shadowBlur = 8
+          ctx.globalAlpha = 0.7 * pulse
+          ctx.beginPath()
+          ctx.arc(gp.x, gp.y, gemR * 1.5, 0, Math.PI * 2)
+          ctx.stroke()
+        })
+
+        // ── Overall gauntlet glow ──
+        const ovG = ctx.createRadialGradient(
+          palm.x,
+          palm.y,
+          0,
+          palm.x,
+          palm.y,
+          handLen * 0.7,
+        )
+        ovG.addColorStop(0, "rgba(255,200,50,0.15)")
+        ovG.addColorStop(1, "rgba(255,150,0,0)")
+        ctx.globalAlpha = 0.7
+        ctx.fillStyle = ovG
+        ctx.shadowBlur = 0
+        ctx.beginPath()
+        ctx.arc(palm.x, palm.y, handLen * 0.7, 0, Math.PI * 2)
+        ctx.fill()
+
+        ctx.restore()
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // EXPERIENCE 6 — DOCTOR STRANGE MAGIC CIRCLES
+      // ═══════════════════════════════════════════════════════════════════════════
+      const EXP_MAGIC = {
+        name: "✨  DR STRANGE",
+        useWings: false,
+        useMask: false,
+        useFace: false,
+        onFrame(results, ctx, t) {
+          const lh = results.leftHandLandmarks
+          const rh = results.rightHandLandmarks
+          if (!lh && !rh) {
+            expDot.className = "hud-dot off"
+            expStatus.textContent = "RAISE HANDS"
+            return
+          }
+          if (lh) drawMagicCircle(ctx, lh, t, 0)
+          if (rh) drawMagicCircle(ctx, rh, t, 1)
+          expDot.className = "hud-dot yellow"
+          expStatus.textContent =
+            "MAGIC " + (lh ? "L✓" : "") + " " + (rh ? "R✓" : "")
+        },
+      }
+
+      function drawMagicCircle(ctx, hand, t, offset) {
+        if (!state.toScreen) return
+        const ts = state.toScreen
+        const palm = ts(
+          hand[HAND_IDX.MIDDLE_MCP].x,
+          hand[HAND_IDX.MIDDLE_MCP].y,
+        )
+        const wrist = ts(hand[HAND_IDX.WRIST].x, hand[HAND_IDX.WRIST].y)
+        const midTip = ts(
+          hand[HAND_IDX.MIDDLE_TIP].x,
+          hand[HAND_IDX.MIDDLE_TIP].y,
+        )
+        const R = Math.hypot(midTip.x - wrist.x, midTip.y - wrist.y) * 0.65
+        if (R < 20) return
+        const cx = palm.x,
+          cy = palm.y
+
+        ctx.save()
+
+        // ── Outer fire ring ──
+        for (let ring = 0; ring < 4; ring++) {
+          const rr = R * (0.9 + ring * 0.22)
+          const speed = (ring % 2 === 0 ? 1 : -1) * (0.8 + ring * 0.3)
+          const segs = 24 + ring * 6
+          const gapFrac = ring === 0 ? 0.04 : 0.07
+          for (let i = 0; i < segs; i++) {
+            const a0 = (i / segs) * Math.PI * 2 + t * speed + offset * 0.5
+            const a1 = a0 + (1 - gapFrac) * ((Math.PI * 2) / segs)
+            const bright = ring === 0 || ring === 2
+            ctx.strokeStyle = bright ? "#ffaa00" : "#ff6600"
+            ctx.lineWidth = bright ? 2.5 : 1.5
+            ctx.globalAlpha = bright ? 0.9 : 0.6
+            ctx.shadowColor = "#ff8800"
+            ctx.shadowBlur = bright ? 16 : 8
+            ctx.beginPath()
+            ctx.arc(cx, cy, rr, a0, a1)
+            ctx.stroke()
+          }
+        }
+
+        // ── Runic inner star ──
+        const POINTS = 8
+        ctx.globalAlpha = 0.85
+        ctx.strokeStyle = "#ffcc44"
+        ctx.lineWidth = 1.8
+        ctx.shadowColor = "#ffaa00"
+        ctx.shadowBlur = 12
+        ctx.beginPath()
+        for (let i = 0; i < POINTS * 2 + 1; i++) {
+          const a = (i / (POINTS * 2)) * Math.PI * 2 + t * 0.4 + offset * 0.3
+          const r = i % 2 === 0 ? R * 0.55 : R * 0.25
+          if (i === 0) ctx.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r)
+          else ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r)
+        }
+        ctx.closePath()
+        ctx.stroke()
+
+        // ── Rotating rune marks (skip on mobile — canvas unicode text is slow) ──
+        if (!isMobile) {
+          const RUNES = [
+            "ᚠ",
+            "ᚢ",
+            "ᚦ",
+            "ᚨ",
+            "ᚱ",
+            "ᚲ",
+            "ᚷ",
+            "ᚹ",
+            "ᚺ",
+            "ᚾ",
+            "ᛁ",
+            "ᛃ",
+          ]
+          ctx.fillStyle = "#ffdd88"
+          ctx.shadowColor = "#ff8800"
+          ctx.shadowBlur = 10
+          ctx.font = `${Math.round(R * 0.22)}px serif`
+          ctx.textAlign = "center"
+          ctx.textBaseline = "middle"
+          for (let i = 0; i < 8; i++) {
+            const a = (i / 8) * Math.PI * 2 + t * 0.35 + offset * 0.4
+            const rx = cx + Math.cos(a) * R * 0.75
+            const ry = cy + Math.sin(a) * R * 0.75
+            ctx.globalAlpha = 0.7 + Math.sin(t * 2 + i) * 0.3
+            ctx.save()
+            ctx.translate(rx, ry)
+            ctx.rotate(a + Math.PI / 2)
+            ctx.fillText(RUNES[i % RUNES.length], 0, 0)
+            ctx.restore()
+          }
+        }
+
+        // ── Spark particles flying outward ──
+        ctx.globalAlpha = 0.9
+        for (let i = 0; i < 12; i++) {
+          const a = (i / 12) * Math.PI * 2 + t * 1.2 + offset
+          const dist = R * 0.85 + Math.sin(t * 4 + i * 0.7) * R * 0.15
+          const sx = cx + Math.cos(a) * dist
+          const sy = cy + Math.sin(a) * dist
+          const sparkR = 2 + Math.sin(t * 5 + i) * 1.5
+          const sG = ctx.createRadialGradient(sx, sy, 0, sx, sy, sparkR * 3)
+          sG.addColorStop(0, "rgba(255,220,100,0.95)")
+          sG.addColorStop(1, "rgba(255,100,0,0)")
+          ctx.fillStyle = sG
+          ctx.shadowBlur = 0
+          ctx.beginPath()
+          ctx.arc(sx, sy, sparkR * 3, 0, Math.PI * 2)
+          ctx.fill()
+        }
+
+        // ── Center portal glow ──
+        const portalPulse = 0.6 + Math.sin(t * 3.5 + offset) * 0.4
+        const portalG = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 0.45)
+        portalG.addColorStop(0, `rgba(255,200,80,${0.5 * portalPulse})`)
+        portalG.addColorStop(0.5, `rgba(255,120,0,${0.2 * portalPulse})`)
+        portalG.addColorStop(1, "rgba(0,0,0,0)")
+        ctx.globalAlpha = 1
+        ctx.fillStyle = portalG
+        ctx.shadowBlur = 0
+        ctx.beginPath()
+        ctx.arc(cx, cy, R * 0.45, 0, Math.PI * 2)
+        ctx.fill()
+
+        ctx.restore()
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // EXPERIENCE 7 — ENERGY BALLS (between both hands)
+      // ═══════════════════════════════════════════════════════════════════════════
+      let energyBallScale = 0
+      const energyOrbiters = Array.from(
+        { length: isMobile ? 4 : 8 },
+        (_, i) => ({
+          angle: (i / 8) * Math.PI * 2,
+          speed: 1.2 + Math.random() * 0.8,
+          dist: 0.6 + Math.random() * 0.3,
+          size: 3 + Math.random() * 4,
+          color: Math.random() < 0.5 ? 0 : 1,
+        }),
+      )
+
+      const EXP_ENERGY_BALL = {
+        name: "🌀  ENERGY BALL",
+        useWings: false,
+        useMask: false,
+        useFace: false,
+        onFrame(results, ctx, t) {
+          const lh = results.leftHandLandmarks
+          const rh = results.rightHandLandmarks
+          if (!lh || !rh || !state.toScreen) {
+            energyBallScale *= 0.9
+            expDot.className = "hud-dot off"
+            expStatus.textContent = "BRING BOTH HANDS CLOSE"
+            if (energyBallScale < 0.01) return
+          }
+
+          let cx, cy, R
+          if (lh && rh) {
+            const ts = state.toScreen
+            const lp = ts(lh[HAND_IDX.MIDDLE_MCP].x, lh[HAND_IDX.MIDDLE_MCP].y)
+            const rp = ts(rh[HAND_IDX.MIDDLE_MCP].x, rh[HAND_IDX.MIDDLE_MCP].y)
+            cx = (lp.x + rp.x) / 2
+            cy = (lp.y + rp.y) / 2
+            const dist = Math.hypot(rp.x - lp.x, rp.y - lp.y)
+            R = Math.min(dist * 0.45, state.screen.w * 0.2)
+            energyBallScale += (1 - energyBallScale) * 0.08
+            expDot.className = "hud-dot"
+            expStatus.textContent =
+              "POWER: " + Math.round(energyBallScale * 100) + "%"
+          } else {
+            energyBallScale *= 0.92
+            if (!state._lastEnergyPos) return
+            cx = state._lastEnergyPos.cx
+            cy = state._lastEnergyPos.cy
+            R = state._lastEnergyPos.R
+          }
+          if (lh && rh) state._lastEnergyPos = { cx, cy, R }
+
+          const sc = energyBallScale
+          if (sc < 0.05) return
+          ctx.save()
+
+          // ── Outer energy corona ──
+          for (let layer = 3; layer >= 0; layer--) {
+            const lr = R * sc * (1.0 + layer * 0.35)
+            const corona = ctx.createRadialGradient(cx, cy, 0, cx, cy, lr)
+            const cols = [
+              ["rgba(0,200,255,", "rgba(100,0,255,"],
+              ["rgba(100,0,255,", "rgba(0,200,255,"],
+              ["rgba(0,255,200,", "rgba(0,100,255,"],
+              ["rgba(200,0,255,", "rgba(0,200,200,"],
+            ]
+            corona.addColorStop(0, cols[layer][0] + (0.4 - layer * 0.08) + ")")
+            corona.addColorStop(
+              0.5,
+              cols[layer][1] + (0.2 - layer * 0.04) + ")",
+            )
+            corona.addColorStop(1, "rgba(0,0,0,0)")
+            ctx.globalAlpha = 0.6 * sc
+            ctx.fillStyle = corona
+            ctx.shadowBlur = 0
+            ctx.beginPath()
+            ctx.arc(cx, cy, lr, 0, Math.PI * 2)
+            ctx.fill()
+          }
+
+          // ── Rotating energy rings ──
+          for (let ring = 0; ring < 3; ring++) {
+            const rr = R * sc * (0.7 + ring * 0.15)
+            ctx.save()
+            ctx.translate(cx, cy)
+            ctx.rotate(t * (ring % 2 === 0 ? 1.5 : -2.0) + ring * 0.7)
+            ctx.strokeStyle = ring === 1 ? "#aa00ff" : "#00aaff"
+            ctx.lineWidth = 2.5 - ring * 0.5
+            ctx.globalAlpha = (0.8 - ring * 0.15) * sc
+            ctx.shadowColor = ring === 1 ? "#aa00ff" : "#00aaff"
+            ctx.shadowBlur = 14
+            ctx.beginPath()
+            ctx.arc(0, 0, rr, 0, Math.PI * 2)
+            ctx.stroke()
+            // dashes on ring
+            for (let d = 0; d < 12; d++) {
+              const da = (d / 12) * Math.PI * 2
+              ctx.strokeStyle = "#ffffff"
+              ctx.lineWidth = 1
+              ctx.shadowBlur = 4
+              ctx.globalAlpha = 0.5 * sc
+              ctx.beginPath()
+              ctx.arc(0, 0, rr, da, da + 0.1)
+              ctx.stroke()
+            }
+            ctx.restore()
+          }
+
+          // ── Orbiting energy bolts ──
+          energyOrbiters.forEach((orb) => {
+            orb.angle += orb.speed * 0.04
+            const ox = cx + Math.cos(orb.angle) * R * sc * orb.dist
+            const oy = cy + Math.sin(orb.angle) * R * sc * orb.dist
+            const cols2 = ["#00e5ff", "#aa00ff"]
+            const og = ctx.createRadialGradient(ox, oy, 0, ox, oy, orb.size * 3)
+            og.addColorStop(
+              0,
+              orb.color === 0 ? "rgba(0,229,255,0.95)" : "rgba(170,0,255,0.95)",
+            )
+            og.addColorStop(1, "rgba(0,0,0,0)")
+            ctx.globalAlpha = 0.9 * sc
+            ctx.fillStyle = og
+            ctx.shadowBlur = 0
+            ctx.beginPath()
+            ctx.arc(ox, oy, orb.size * 3, 0, Math.PI * 2)
+            ctx.fill()
+          })
+
+          // ── Core ──
+          const coreR = R * sc * 0.35
+          const coreG = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR)
+          coreG.addColorStop(0, "rgba(255,255,255,1.0)")
+          coreG.addColorStop(0.2, "rgba(180,100,255,0.9)")
+          coreG.addColorStop(0.6, "rgba(0,100,255,0.6)")
+          coreG.addColorStop(1, "rgba(0,0,100,0)")
+          ctx.globalAlpha = sc
+          ctx.fillStyle = coreG
+          ctx.shadowColor = "#aa00ff"
+          ctx.shadowBlur = 30
+          ctx.beginPath()
+          ctx.arc(cx, cy, coreR, 0, Math.PI * 2)
+          ctx.fill()
+
+          ctx.restore()
+        },
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // EXPERIENCE 8 — REPULSOR BLAST (Iron Man palm blast)
+      // ═══════════════════════════════════════════════════════════════════════════
+      const repulsorState = {
+        left: { active: false, charge: 0, blasts: [] },
+        right: { active: false, charge: 0, blasts: [] },
+      }
+
+      function drawRepulsor(ctx, hand, side, t) {
+        if (!hand || !state.toScreen) return
+        const ts = state.toScreen
+        const palm = ts(
+          hand[HAND_IDX.MIDDLE_MCP].x,
+          hand[HAND_IDX.MIDDLE_MCP].y,
+        )
+        const wrist = ts(hand[HAND_IDX.WRIST].x, hand[HAND_IDX.WRIST].y)
+        const midTip = ts(
+          hand[HAND_IDX.MIDDLE_TIP].x,
+          hand[HAND_IDX.MIDDLE_TIP].y,
+        )
+        const handLen = Math.hypot(midTip.x - wrist.x, midTip.y - wrist.y)
+        if (handLen < 30) return
+
+        // Detect "palm toward camera" by checking if fingertips are above palm (in screen space)
+        const tipAvgY =
+          [4, 8, 12, 16, 20].reduce(
+            (s, i) => s + ts(hand[i].x, hand[i].y).y,
+            0,
+          ) / 5
+        const isBlasting = tipAvgY < palm.y - handLen * 0.1 // fingertips above palm
+
+        const rs = repulsorState[side]
+        rs.charge = isBlasting
+          ? Math.min(1, rs.charge + 0.06)
+          : Math.max(0, rs.charge - 0.04)
+
+        // Spawn blast ring when fully charged
+        if (
+          rs.charge > 0.95 &&
+          Math.random() < 0.3 &&
+          rs.blasts.length < (isMobile ? 3 : 8)
+        ) {
+          rs.blasts.push({
+            x: palm.x,
+            y: palm.y,
+            r: 0,
+            maxR: state.screen.w * 0.6,
+            alpha: 1.0,
+          })
+        }
+
+        ctx.save()
+        const R = handLen * 0.28
+        const cx = palm.x,
+          cy = palm.y
+
+        // ── Charge indicator on palm ──
+        if (rs.charge > 0.05) {
+          // Outer glow
+          const outerG = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 2.5)
+          outerG.addColorStop(0, `rgba(150,220,255,${0.3 * rs.charge})`)
+          outerG.addColorStop(1, "rgba(0,100,200,0)")
+          ctx.fillStyle = outerG
+          ctx.globalAlpha = 1
+          ctx.shadowBlur = 0
+          ctx.beginPath()
+          ctx.arc(cx, cy, R * 2.5, 0, Math.PI * 2)
+          ctx.fill()
+
+          // Charge ring segments
+          const chargeSegs = Math.floor(rs.charge * 12)
+          for (let i = 0; i < chargeSegs; i++) {
+            const a0 = (i / 12) * Math.PI * 2 - Math.PI / 2 + t * 2
+            const a1 = a0 + ((Math.PI * 2) / 12) * 0.75
+            ctx.strokeStyle = rs.charge > 0.8 ? "#ffffff" : "#00aaff"
+            ctx.lineWidth = 3.5
+            ctx.shadowColor = "#00e5ff"
+            ctx.shadowBlur = 16
+            ctx.globalAlpha = 0.85
+            ctx.beginPath()
+            ctx.arc(cx, cy, R * 1.2, a0, a1)
+            ctx.stroke()
+          }
+
+          // Core beam
+          const coreG = ctx.createRadialGradient(cx, cy, 0, cx, cy, R)
+          coreG.addColorStop(0, `rgba(255,255,255,${rs.charge})`)
+          coreG.addColorStop(0.4, `rgba(100,200,255,${0.8 * rs.charge})`)
+          coreG.addColorStop(1, "rgba(0,100,200,0)")
+          ctx.globalAlpha = rs.charge
+          ctx.fillStyle = coreG
+          ctx.shadowColor = "#00e5ff"
+          ctx.shadowBlur = 25
+          ctx.beginPath()
+          ctx.arc(cx, cy, R, 0, Math.PI * 2)
+          ctx.fill()
+        }
+
+        // ── Expanding blast rings ──
+        for (let i = rs.blasts.length - 1; i >= 0; i--) {
+          const b = rs.blasts[i]
+          b.r += 18 + b.r * 0.05
+          b.alpha -= 0.025
+          if (b.r > b.maxR || b.alpha <= 0) {
+            rs.blasts.splice(i, 1)
+            continue
+          }
+          const w = Math.max(1, 8 - b.r * 0.015)
+          ctx.strokeStyle = `rgba(100,200,255,${b.alpha * 0.9})`
+          ctx.lineWidth = w
+          ctx.shadowColor = "#00e5ff"
+          ctx.shadowBlur = 20 * b.alpha
+          ctx.globalAlpha = b.alpha
+          ctx.beginPath()
+          ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2)
+          ctx.stroke()
+          // Inner ring
+          if (b.r > 30) {
+            ctx.strokeStyle = `rgba(200,240,255,${b.alpha * 0.6})`
+            ctx.lineWidth = w * 0.5
+            ctx.shadowBlur = 10 * b.alpha
+            ctx.beginPath()
+            ctx.arc(b.x, b.y, b.r * 0.7, 0, Math.PI * 2)
+            ctx.stroke()
+          }
+        }
+
+        ctx.restore()
+      }
+
+      const EXP_REPULSOR = {
+        name: "⚡  REPULSOR",
+        useWings: false,
+        useMask: false,
+        useFace: false,
+        onFrame(results, ctx, t) {
+          const lh = results.leftHandLandmarks
+          const rh = results.rightHandLandmarks
+          if (!lh && !rh) {
+            expDot.className = "hud-dot off"
+            expStatus.textContent = "POINT PALM AT CAMERA"
+            return
+          }
+          if (lh) drawRepulsor(ctx, lh, "left", t)
+          if (rh) drawRepulsor(ctx, rh, "right", t)
+          const lc = repulsorState.left.charge,
+            rc = repulsorState.right.charge
+          expDot.className = "hud-dot" + (lc > 0.5 || rc > 0.5 ? "" : " off")
+          expStatus.textContent =
+            "CHARGE L:" +
+            Math.round(lc * 100) +
+            "% R:" +
+            Math.round(rc * 100) +
+            "%"
+        },
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // EXPERIENCE 9 — ENERGY EYES (Cyclops / Superman heat vision)
+      // ═══════════════════════════════════════════════════════════════════════════
+      const eyeBeams = { left: [], right: [] }
+
+      const EXP_ENERGY_EYES = {
+        name: "👁  ENERGY EYES",
+        useWings: false,
+        useMask: false,
+        useFace: false,
+        onFrame(results, ctx, t) {
+          const face = results.faceLandmarks
+          if (!face || !state.toScreen) {
+            expDot.className = "hud-dot off"
+            expStatus.textContent = "SHOW YOUR FACE"
+            return
+          }
+          drawEnergyEyes(ctx, face, t)
+          expDot.className = "hud-dot"
+          expStatus.textContent = "BEAM ACTIVE"
+        },
+      }
+
+      function drawEnergyEyes(ctx, face, t) {
+        const ts = state.toScreen
+
+        // Eye centers
+        const lEyeC = faceAvg(face, [33, 133, 159, 145, 153, 144])
+        const rEyeC = faceAvg(face, [362, 263, 386, 374, 380, 373])
+        const lEye = ts(lEyeC.x, lEyeC.y)
+        const rEye = ts(rEyeC.x, rEyeC.y)
+
+        // Eye size based on face width
+        const faceW = Math.hypot(
+          ts(face[FACE_IDX.L_TEMPLE].x, face[FACE_IDX.L_TEMPLE].y).x -
+            ts(face[FACE_IDX.R_TEMPLE].x, face[FACE_IDX.R_TEMPLE].y).x,
+          ts(face[FACE_IDX.L_TEMPLE].x, face[FACE_IDX.L_TEMPLE].y).y -
+            ts(face[FACE_IDX.R_TEMPLE].x, face[FACE_IDX.R_TEMPLE].y).y,
+        )
+        const eyeR = faceW * 0.06
+
+        // Beam direction: slightly downward from eyes toward viewer
+        const eyeDir = { x: 0, y: 0.4, len: state.screen.h * 1.5 }
+
+        ctx.save()
+        ;[lEye, rEye].forEach((eye, ei) => {
+          // ── Beam ──
+          const bx = eye.x + eyeDir.x * eyeDir.len
+          const by = eye.y + eyeDir.y * eyeDir.len
+
+          // Wide glow beam
+          for (let layer = 3; layer >= 0; layer--) {
+            const bw = (layer + 1) * eyeR * 0.8
+            const alpha =
+              (0.5 - layer * 0.1) * (0.7 + Math.sin(t * 6 + ei) * 0.3)
+            const beamG = ctx.createLinearGradient(eye.x, eye.y, bx, by)
+            beamG.addColorStop(
+              0,
+              `rgba(255,${layer < 2 ? 50 : 150},${layer === 0 ? 200 : 50},${alpha})`,
+            )
+            beamG.addColorStop(
+              0.4,
+              `rgba(255,${layer < 2 ? 20 : 80},0,${alpha * 0.7})`,
+            )
+            beamG.addColorStop(1, `rgba(255,0,0,0)`)
+
+            ctx.strokeStyle = beamG
+            ctx.lineWidth = bw
+            ctx.globalAlpha = 1
+            ctx.lineCap = "round"
+            ctx.shadowColor = "#ff2200"
+            ctx.shadowBlur = layer === 0 ? 20 : 5
+            ctx.beginPath()
+            ctx.moveTo(eye.x, eye.y)
+            ctx.lineTo(bx, by)
+            ctx.stroke()
+          }
+
+          // ── Eye glow socket ──
+          const pulse = 0.7 + Math.sin(t * 5 + ei * Math.PI) * 0.3
+          const sockG = ctx.createRadialGradient(
+            eye.x,
+            eye.y,
+            0,
+            eye.x,
+            eye.y,
+            eyeR * 2.5,
+          )
+          sockG.addColorStop(0, `rgba(255,255,200,${0.95 * pulse})`)
+          sockG.addColorStop(0.3, `rgba(255,80,0,${0.85 * pulse})`)
+          sockG.addColorStop(0.7, `rgba(200,0,0,${0.4 * pulse})`)
+          sockG.addColorStop(1, "rgba(100,0,0,0)")
+          ctx.globalAlpha = 1
+          ctx.fillStyle = sockG
+          ctx.shadowColor = "#ff4400"
+          ctx.shadowBlur = 20
+          ctx.beginPath()
+          ctx.arc(eye.x, eye.y, eyeR * 2.5, 0, Math.PI * 2)
+          ctx.fill()
+
+          // ── Impact sparks at beam end ──
+          ctx.shadowColor = "#ff4400"
+          ctx.shadowBlur = 15
+          for (let s = 0; s < 8; s++) {
+            const sa = (s / 8) * Math.PI * 2 + t * 4
+            const sl = eyeR * (1.0 + Math.random() * 1.5)
+            const sx = bx + Math.cos(sa) * sl
+            const sy = by + Math.sin(sa) * sl
+            ctx.strokeStyle = s % 2 === 0 ? "#ff6600" : "#ffcc00"
+            ctx.lineWidth = 1.5 + Math.sin(t * 8 + s) * 1
+            ctx.globalAlpha = 0.6 + Math.sin(t * 6 + s) * 0.4
+            ctx.beginPath()
+            ctx.moveTo(bx, by)
+            ctx.lineTo(sx, sy)
+            ctx.stroke()
+          }
+        })
+
+        ctx.restore()
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // EXPERIENCE 10 — LIGHTNING STORM
+      // ═══════════════════════════════════════════════════════════════════════════
+      const lightningBolts2 = []
+      let nextLightningTime = 0
+      let lightningFlash = 0
+
+      function generateLightningBolt(x1, y1, x2, y2, roughness, depth) {
+        if (depth === 0)
+          return [
+            [x1, y1],
+            [x2, y2],
+          ]
+        const mx = (x1 + x2) / 2 + (Math.random() - 0.5) * roughness
+        const my = (y1 + y2) / 2 + (Math.random() - 0.5) * roughness
+        const left = generateLightningBolt(
+          x1,
+          y1,
+          mx,
+          my,
+          roughness * 0.55,
+          depth - 1,
+        )
+        const right = generateLightningBolt(
+          mx,
+          my,
+          x2,
+          y2,
+          roughness * 0.55,
+          depth - 1,
+        )
+        if (depth > 2 && Math.random() < 0.35) {
+          const bx = mx + (Math.random() - 0.5) * roughness * 1.2
+          const by = my + roughness * 1.5 + Math.random() * roughness
+          const branch = generateLightningBolt(
+            mx,
+            my,
+            bx,
+            by,
+            roughness * 0.4,
+            depth - 2,
+          )
+          return [...left, ...right, ...branch]
+        }
+        return [...left, ...right]
+      }
+
+      function drawLightningBolt(ctx, pts, alpha, width, col) {
+        if (pts.length < 2) return
+        ctx.save()
+        ctx.strokeStyle = col
+        ctx.lineWidth = width
+        ctx.globalAlpha = alpha
+        ctx.shadowColor = col
+        ctx.shadowBlur = 15
+        ctx.lineCap = "round"
+        ctx.lineJoin = "round"
+        ctx.beginPath()
+        ctx.moveTo(pts[0][0], pts[0][1])
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1])
+        ctx.stroke()
+        ctx.restore()
+      }
+
+      const EXP_LIGHTNING = {
+        name: "⚡  LIGHTNING",
+        useWings: false,
+        useMask: false,
+        useFace: false,
+        onFrame(results, ctx, t) {
+          const W = state.screen.w,
+            H = state.screen.h
+          const now = performance.now()
+          if (now > nextLightningTime) {
+            const startX = Math.random() * W
+            const endX = startX + (Math.random() - 0.5) * W * 0.4
+            const pts = generateLightningBolt(
+              startX,
+              0,
+              endX,
+              H * 0.8,
+              W * 0.15,
+              isMobile ? 4 : 6,
+            )
+            lightningBolts2.push({
+              pts,
+              life: 1.0,
+              decay: 0.04 + Math.random() * 0.04,
+              mainWidth: 2.5 + Math.random() * 2,
+              color: Math.random() < 0.7 ? "#aaddff" : "#ffffff",
+            })
+            if (Math.random() < 0.5) {
+              const sx2 = Math.random() * W
+              const pts2 = generateLightningBolt(
+                sx2,
+                0,
+                sx2 + (Math.random() - 0.5) * W * 0.3,
+                H * 0.6,
+                W * 0.1,
+                isMobile ? 3 : 5,
+              )
+              lightningBolts2.push({
+                pts: pts2,
+                life: 0.8,
+                decay: 0.06 + Math.random() * 0.04,
+                mainWidth: 1.5,
+                color: "#88aaff",
+              })
+            }
+            lightningFlash = 0.6
+            nextLightningTime = now + 400 + Math.random() * 1200
+          }
+          if (lightningFlash > 0) {
+            ctx.save()
+            ctx.fillStyle = `rgba(180,210,255,${lightningFlash * 0.08})`
+            ctx.fillRect(0, 0, W, H)
+            ctx.restore()
+            lightningFlash *= 0.85
+          }
+          for (let i = lightningBolts2.length - 1; i >= 0; i--) {
+            const b = lightningBolts2[i]
+            b.life -= b.decay
+            if (b.life <= 0) {
+              lightningBolts2.splice(i, 1)
+              continue
+            }
+            drawLightningBolt(ctx, b.pts, b.life * 0.95, b.mainWidth, b.color)
+            drawLightningBolt(
+              ctx,
+              b.pts,
+              b.life * 0.25,
+              b.mainWidth * 5,
+              "rgba(100,160,255,0.3)",
+            )
+            drawLightningBolt(
+              ctx,
+              b.pts,
+              b.life * 1.0,
+              b.mainWidth * 0.3,
+              "#ffffff",
+            )
+          }
+          lightningBolts2.forEach((b) => {
+            if (b.pts.length < 2) return
+            const last = b.pts[b.pts.length - 1]
+            const gr = ctx.createRadialGradient(
+              last[0],
+              last[1],
+              0,
+              last[0],
+              last[1],
+              80 * b.life,
+            )
+            gr.addColorStop(0, `rgba(200,220,255,${b.life * 0.4})`)
+            gr.addColorStop(1, "rgba(0,50,200,0)")
+            ctx.save()
+            ctx.fillStyle = gr
+            ctx.globalAlpha = 1
+            ctx.beginPath()
+            ctx.arc(last[0], last[1], 80 * b.life, 0, Math.PI * 2)
+            ctx.fill()
+            ctx.restore()
+          })
+          expDot.className =
+            lightningBolts2.length > 0 ? "hud-dot yellow" : "hud-dot"
+          expStatus.textContent = "BOLTS: " + lightningBolts2.length
+        },
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // EXPERIENCE 11 — WEB SHOOTER (Spider-Man)
+      // ═══════════════════════════════════════════════════════════════════════════
+      const webStrands = [] // active web strands
+      const webParticles = [] // impact sparkles
+
+      // Detect Spidey pose: index + pinky extended, middle + ring folded
+      function isSpideyPose(hand) {
+        if (!hand) return false
+        const ts = state.toScreen
+        const wrist = ts(hand[HAND_IDX.WRIST].x, hand[HAND_IDX.WRIST].y)
+        const midTip = ts(
+          hand[HAND_IDX.MIDDLE_TIP].x,
+          hand[HAND_IDX.MIDDLE_TIP].y,
+        )
+        const handLen = Math.hypot(midTip.x - wrist.x, midTip.y - wrist.y)
+        if (handLen < 30) return false
+
+        function extended(tip, mcp) {
+          const t = ts(hand[tip].x, hand[tip].y)
+          const m = ts(hand[mcp].x, hand[mcp].y)
+          return (
+            Math.hypot(t.x - wrist.x, t.y - wrist.y) >
+            Math.hypot(m.x - wrist.x, m.y - wrist.y) * 0.85
+          )
+        }
+        function folded(tip, mcp) {
+          const t = ts(hand[tip].x, hand[tip].y)
+          const m = ts(hand[mcp].x, hand[mcp].y)
+          return (
+            Math.hypot(t.x - wrist.x, t.y - wrist.y) <
+            Math.hypot(m.x - wrist.x, m.y - wrist.y) * 0.8
+          )
+        }
+
+        const indexOut = extended(HAND_IDX.INDEX_TIP, HAND_IDX.INDEX_MCP)
+        const pinkyOut = extended(HAND_IDX.PINKY_TIP, HAND_IDX.PINKY_MCP)
+        const middleIn = folded(HAND_IDX.MIDDLE_TIP, HAND_IDX.MIDDLE_MCP)
+        const ringIn = folded(HAND_IDX.RING_TIP, HAND_IDX.RING_MCP)
+        return indexOut && pinkyOut && middleIn && ringIn
+      }
+
+      function spawnWeb(hand, side) {
+        if (!hand || !state.toScreen) return
+        const ts = state.toScreen
+        const W = state.screen.w,
+          H = state.screen.h
+        const wrist = ts(hand[HAND_IDX.WRIST].x, hand[HAND_IDX.WRIST].y)
+        // Direction: from wrist toward upper part of screen with slight random spread
+        const angle = -Math.PI / 2 + (Math.random() - 0.5) * 0.6
+        const speed = W * 0.022
+        webStrands.push({
+          x: wrist.x,
+          y: wrist.y,
+          ox: wrist.x,
+          oy: wrist.y, // origin for drawing the full strand
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: 1.0,
+          decay: 0.012,
+          width: 2.5 + Math.random() * 1.5,
+          segments: [], // trail of past positions
+          hit: false,
+        })
+      }
+
+      function drawWebShooter(ctx, lh, rh, t) {
+        const W = state.screen.w,
+          H = state.screen.h
+        const ts = state.toScreen
+
+        // Detect pose + spawn
+        const lSpidey = isSpideyPose(lh)
+        const rSpidey = isSpideyPose(rh)
+        const now = performance.now()
+
+        if (!drawWebShooter._lastSpawn) drawWebShooter._lastSpawn = 0
+        if ((lSpidey || rSpidey) && now - drawWebShooter._lastSpawn > 320) {
+          if (lSpidey) spawnWeb(lh, "left")
+          if (rSpidey) spawnWeb(rh, "right")
+          drawWebShooter._lastSpawn = now
+        }
+
+        ctx.save()
+
+        // ── Draw wrist shooter glow when in pose ──
+        ;[lh, rh].forEach((hand, hi) => {
+          if (!hand) return
+          const posed = hi === 0 ? lSpidey : rSpidey
+          const wrist = ts(hand[HAND_IDX.WRIST].x, hand[HAND_IDX.WRIST].y)
+          const midTip = ts(
+            hand[HAND_IDX.MIDDLE_TIP].x,
+            hand[HAND_IDX.MIDDLE_TIP].y,
+          )
+          const handLen = Math.hypot(midTip.x - wrist.x, midTip.y - wrist.y)
+
+          // Draw finger skeleton in red
+          FINGER_CHAINS.forEach((chain) => {
+            for (let i = 0; i < chain.length - 1; i++) {
+              const pa = ts(hand[chain[i]].x, hand[chain[i]].y)
+              const pb = ts(hand[chain[i + 1]].x, hand[chain[i + 1]].y)
+              ctx.strokeStyle = posed ? "#ff2200" : "#cc4422"
+              ctx.lineWidth = 2
+              ctx.globalAlpha = 0.7
+              ctx.shadowColor = "#ff4400"
+              ctx.shadowBlur = 6
+              ctx.beginPath()
+              ctx.moveTo(pa.x, pa.y)
+              ctx.lineTo(pb.x, pb.y)
+              ctx.stroke()
+            }
+          })
+
+          // Wrist shooter device
+          const r = handLen * 0.18
+          const shooterG = ctx.createRadialGradient(
+            wrist.x,
+            wrist.y,
+            0,
+            wrist.x,
+            wrist.y,
+            r * 2,
+          )
+          shooterG.addColorStop(
+            0,
+            posed ? "rgba(255,80,0,0.9)" : "rgba(180,50,0,0.5)",
+          )
+          shooterG.addColorStop(1, "rgba(100,20,0,0)")
+          ctx.globalAlpha = 1
+          ctx.fillStyle = shooterG
+          ctx.shadowBlur = 0
+          ctx.beginPath()
+          ctx.arc(wrist.x, wrist.y, r * 2, 0, Math.PI * 2)
+          ctx.fill()
+
+          // Spider symbol on wrist
+          if (posed) {
+            ctx.fillStyle = "#ffffff"
+            ctx.shadowColor = "#ffffff"
+            ctx.shadowBlur = 8
+            ctx.globalAlpha = 0.9
+            ctx.font = `bold ${Math.round(r * 1.2)}px serif`
+            ctx.textAlign = "center"
+            ctx.textBaseline = "middle"
+            ctx.fillText("🕷", wrist.x, wrist.y)
+          }
+        })
+
+        // ── Update and draw web strands ──
+        for (let i = webStrands.length - 1; i >= 0; i--) {
+          const w = webStrands[i]
+          if (!w.hit) {
+            w.segments.push({ x: w.x, y: w.y })
+            w.x += w.vx
+            w.y += w.vy
+            w.vy += 0.4 // gravity droop
+            // Hit wall/ceiling
+            if (w.x < 0 || w.x > W || w.y < 0) {
+              w.hit = true
+              // Spawn impact particles
+              for (let p = 0; p < (isMobile ? 4 : 8); p++) {
+                const pa = Math.random() * Math.PI * 2
+                webParticles.push({
+                  x: w.x,
+                  y: w.y,
+                  vx: Math.cos(pa) * 3,
+                  vy: Math.sin(pa) * 3,
+                  life: 1,
+                  decay: 0.06,
+                })
+              }
+            }
+          }
+          w.life -= w.decay
+          if (w.life <= 0) {
+            webStrands.splice(i, 1)
+            continue
+          }
+          if (w.segments.length < 2) continue
+
+          // Draw web strand as catenary curve with cross-threads
+          ctx.globalAlpha = w.life * 0.92
+          ctx.strokeStyle = `rgba(220,220,255,${w.life})`
+          ctx.lineWidth = w.width * w.life
+          ctx.shadowColor = "#aaaaff"
+          ctx.shadowBlur = 4
+          ctx.lineCap = "round"
+          ctx.lineJoin = "round"
+          ctx.beginPath()
+          ctx.moveTo(w.segments[0].x, w.segments[0].y)
+          for (let s = 1; s < w.segments.length; s++) {
+            ctx.lineTo(w.segments[s].x, w.segments[s].y)
+          }
+          ctx.lineTo(w.x, w.y)
+          ctx.stroke()
+
+          // Cross-threads every ~30px along strand
+          ctx.strokeStyle = `rgba(180,180,220,${w.life * 0.5})`
+          ctx.lineWidth = 0.8
+          ctx.shadowBlur = 0
+          const allPts = [...w.segments, { x: w.x, y: w.y }]
+          let dist = 0
+          for (let s = 1; s < allPts.length; s++) {
+            const dx = allPts[s].x - allPts[s - 1].x,
+              dy = allPts[s].y - allPts[s - 1].y
+            dist += Math.hypot(dx, dy)
+            if (dist > 30) {
+              dist = 0
+              // Small perpendicular cross thread
+              const nx = -dy / (Math.hypot(dx, dy) || 1),
+                ny = dx / (Math.hypot(dx, dy) || 1)
+              const cx2 = allPts[s].x,
+                cy2 = allPts[s].y
+              const len2 = 8 * w.life
+              ctx.beginPath()
+              ctx.moveTo(cx2 + nx * len2, cy2 + ny * len2)
+              ctx.lineTo(cx2 - nx * len2, cy2 - ny * len2)
+              ctx.stroke()
+            }
+          }
+        }
+
+        // ── Impact sparkles ──
+        for (let i = webParticles.length - 1; i >= 0; i--) {
+          const p = webParticles[i]
+          p.x += p.vx
+          p.y += p.vy
+          p.life -= p.decay
+          if (p.life <= 0) {
+            webParticles.splice(i, 1)
+            continue
+          }
+          ctx.globalAlpha = p.life * 0.8
+          ctx.fillStyle = "#ddddff"
+          ctx.shadowColor = "#aaaaff"
+          ctx.shadowBlur = 6
+          ctx.beginPath()
+          ctx.arc(p.x, p.y, 3 * p.life, 0, Math.PI * 2)
+          ctx.fill()
+        }
+
+        ctx.restore()
+      }
+
+      const EXP_WEB_SHOOTER = {
+        name: "🕷️  WEB SHOOTER",
+        useWings: false,
+        useMask: false,
+        useFace: false,
+        onFrame(results, ctx, t) {
+          const lh = results.leftHandLandmarks
+          const rh = results.rightHandLandmarks
+          const lS = isSpideyPose(lh),
+            rS = isSpideyPose(rh)
+          drawWebShooter(ctx, lh, rh, t)
+          expDot.className = lS || rS ? "hud-dot" : "hud-dot off"
+          expStatus.textContent =
+            lS || rS
+              ? "🕷 THWIP! " + (lS ? "L✓" : "") + (rS ? " R✓" : "")
+              : "MAKE SPIDEY HAND SIGN"
+        },
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // EXPERIENCE 12 — X-RAY SKELETON
+      // ═══════════════════════════════════════════════════════════════════════════
+      const xrayHistory = [] // smoothing buffer for jitter
+
+      function drawXraySkeleton(ctx, pose, face, t) {
+        if (!pose || !state.toScreen) return
+        const ts = state.toScreen
+        const W = state.screen.w,
+          H = state.screen.h
+
+        // Smooth landmarks with history buffer
+        xrayHistory.push(pose)
+        if (xrayHistory.length > 4) xrayHistory.shift()
+        const smoothed = pose.map((lm, i) => {
+          let sx = 0,
+            sy = 0
+          xrayHistory.forEach((h) => {
+            sx += h[i].x
+            sy += h[i].y
+          })
+          return { x: sx / xrayHistory.length, y: sy / xrayHistory.length }
+        })
+
+        const p = (idx) => ts(smoothed[idx].x, smoothed[idx].y)
+
+        // Key joints
+        const NOSE = 0,
+          LSH = 11,
+          RSH = 12,
+          LEL = 13,
+          REL = 14,
+          LWR = 15,
+          RWR = 16,
+          LHI = 23,
+          RHI = 24,
+          LKN = 25,
+          RKN = 26,
+          LAN = 27,
+          RAN = 28
+
+        ctx.save()
+
+        // ── Scan line sweep effect ──
+        const scanY = (((t * 0.4) % 1.2) - 0.1) * H
+        const scanG = ctx.createLinearGradient(0, scanY - 60, 0, scanY + 60)
+        scanG.addColorStop(0, "rgba(0,255,120,0)")
+        scanG.addColorStop(0.5, "rgba(0,255,120,0.06)")
+        scanG.addColorStop(1, "rgba(0,255,120,0)")
+        ctx.fillStyle = scanG
+        ctx.globalAlpha = 1
+        ctx.fillRect(0, scanY - 60, W, 120)
+
+        // ── HUD corner brackets ──
+        const bSize = 28,
+          bW = 2
+        const corners = [
+          [20, 20],
+          [W - 20, 20],
+          [20, H - 20],
+          [W - 20, H - 20],
+        ]
+        const signs = [
+          [1, 1],
+          [-1, 1],
+          [1, -1],
+          [-1, -1],
+        ]
+        ctx.strokeStyle = "#00ff88"
+        ctx.lineWidth = bW
+        ctx.shadowColor = "#00ff88"
+        ctx.shadowBlur = 8
+        ctx.globalAlpha = 0.7
+        corners.forEach(([cx2, cy2], i) => {
+          const [sx, sy] = signs[i]
+          ctx.beginPath()
+          ctx.moveTo(cx2 + sx * bSize, cy2)
+          ctx.lineTo(cx2, cy2)
+          ctx.lineTo(cx2, cy2 + sy * bSize)
+          ctx.stroke()
+        })
+
+        // ── Bone connections ──
+        const BONE_PAIRS = [
+          // Spine
+          [NOSE, LSH],
+          [NOSE, RSH],
+          [LSH, RSH],
+          [LSH, LHI],
+          [RSH, RHI],
+          [LHI, RHI],
+          // Left arm
+          [LSH, LEL],
+          [LEL, LWR],
+          // Right arm
+          [RSH, REL],
+          [REL, RWR],
+          // Left leg
+          [LHI, LKN],
+          [LKN, LAN],
+          // Right leg
+          [RHI, RKN],
+          [RKN, RAN],
+        ]
+
+        ctx.lineCap = "round"
+        ctx.lineJoin = "round"
+        BONE_PAIRS.forEach(([a, b]) => {
+          const pa = p(a),
+            pb = p(b)
+          const boneLen = Math.hypot(pb.x - pa.x, pb.y - pa.y)
+          if (boneLen < 5) return
+
+          // Outer glow
+          ctx.strokeStyle = "rgba(0,255,140,0.18)"
+          ctx.lineWidth = 16
+          ctx.shadowBlur = 0
+          ctx.globalAlpha = 1
+          ctx.beginPath()
+          ctx.moveTo(pa.x, pa.y)
+          ctx.lineTo(pb.x, pb.y)
+          ctx.stroke()
+
+          // Mid glow
+          ctx.strokeStyle = "rgba(0,255,140,0.45)"
+          ctx.lineWidth = 7
+          ctx.shadowColor = "#00ff88"
+          ctx.shadowBlur = 12
+          ctx.beginPath()
+          ctx.moveTo(pa.x, pa.y)
+          ctx.lineTo(pb.x, pb.y)
+          ctx.stroke()
+
+          // Core bright bone
+          const boneG = ctx.createLinearGradient(pa.x, pa.y, pb.x, pb.y)
+          boneG.addColorStop(0, "rgba(180,255,210,0.95)")
+          boneG.addColorStop(0.5, "rgba(255,255,255,1.0)")
+          boneG.addColorStop(1, "rgba(180,255,210,0.95)")
+          ctx.strokeStyle = boneG
+          ctx.lineWidth = 2.5
+          ctx.shadowBlur = 6
+          ctx.beginPath()
+          ctx.moveTo(pa.x, pa.y)
+          ctx.lineTo(pb.x, pb.y)
+          ctx.stroke()
+
+          // Bone texture dashes (like real X-ray)
+          ctx.strokeStyle = "rgba(0,180,100,0.3)"
+          ctx.lineWidth = 1
+          ctx.shadowBlur = 0
+          ctx.setLineDash([4, 6])
+          ctx.beginPath()
+          ctx.moveTo(pa.x, pa.y)
+          ctx.lineTo(pb.x, pb.y)
+          ctx.stroke()
+          ctx.setLineDash([])
+        })
+
+        // ── Joint spheres ──
+        const JOINTS = [
+          NOSE,
+          LSH,
+          RSH,
+          LEL,
+          REL,
+          LWR,
+          RWR,
+          LHI,
+          RHI,
+          LKN,
+          RKN,
+          LAN,
+          RAN,
+        ]
+        JOINTS.forEach((idx) => {
+          const jp = p(idx)
+          const isLarge = [NOSE, LSH, RSH, LHI, RHI].includes(idx)
+          const r = isLarge ? 10 : 7
+          const pulse = 0.7 + Math.sin(t * 4 + idx * 0.5) * 0.3
+
+          // Outer ring
+          ctx.strokeStyle = `rgba(0,255,140,${0.5 * pulse})`
+          ctx.lineWidth = 1.5
+          ctx.shadowColor = "#00ff88"
+          ctx.shadowBlur = 12
+          ctx.globalAlpha = 1
+          ctx.beginPath()
+          ctx.arc(jp.x, jp.y, r * 1.8, 0, Math.PI * 2)
+          ctx.stroke()
+
+          // Fill
+          const jG = ctx.createRadialGradient(jp.x, jp.y, 0, jp.x, jp.y, r)
+          jG.addColorStop(0, `rgba(255,255,255,${0.9 * pulse})`)
+          jG.addColorStop(0.4, `rgba(0,255,140,${0.8 * pulse})`)
+          jG.addColorStop(1, `rgba(0,100,60,${0.3 * pulse})`)
+          ctx.fillStyle = jG
+          ctx.shadowBlur = 10
+          ctx.beginPath()
+          ctx.arc(jp.x, jp.y, r, 0, Math.PI * 2)
+          ctx.fill()
+        })
+
+        // ── Skull from face landmarks (desktop only — too expensive on mobile) ──
+        if (!isMobile && face && face.length > 400) {
+          const skullPts = [
+            10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365,
+            379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93,
+            234, 127, 162, 21, 54, 103, 67, 109,
+          ]
+          ctx.beginPath()
+          skullPts.forEach((idx, i) => {
+            const sp = ts(face[idx].x, face[idx].y)
+            if (i === 0) ctx.moveTo(sp.x, sp.y)
+            else ctx.lineTo(sp.x, sp.y)
+          })
+          ctx.closePath()
+          ctx.fillStyle = "rgba(0,255,140,0.08)"
+          ctx.strokeStyle = "rgba(0,255,140,0.55)"
+          ctx.lineWidth = 1.5
+          ctx.shadowColor = "#00ff88"
+          ctx.shadowBlur = 10
+          ctx.globalAlpha = 0.85
+          ctx.fill()
+          ctx.stroke()
+
+          // Eye sockets
+          ;[
+            [33, 133, 159, 145],
+            [362, 263, 386, 374],
+          ].forEach((eyeIdxs) => {
+            const eyePts = eyeIdxs.map((i) => ts(face[i].x, face[i].y))
+            const ecx = eyePts.reduce((s, p2) => s + p2.x, 0) / eyePts.length
+            const ecy = eyePts.reduce((s, p2) => s + p2.y, 0) / eyePts.length
+            const er =
+              Math.hypot(eyePts[0].x - eyePts[1].x, eyePts[0].y - eyePts[1].y) *
+              0.55
+            ctx.fillStyle = "rgba(0,0,0,0.7)"
+            ctx.strokeStyle = "rgba(0,255,140,0.8)"
+            ctx.shadowBlur = 12
+            ctx.lineWidth = 1.5
+            ctx.globalAlpha = 0.9
+            ctx.beginPath()
+            ctx.ellipse(ecx, ecy, er, er * 0.65, 0, 0, Math.PI * 2)
+            ctx.fill()
+            ctx.stroke()
+            // Inner glow
+            const egG = ctx.createRadialGradient(ecx, ecy, 0, ecx, ecy, er)
+            egG.addColorStop(0, "rgba(0,255,100,0.4)")
+            egG.addColorStop(1, "rgba(0,0,0,0)")
+            ctx.fillStyle = egG
+            ctx.beginPath()
+            ctx.ellipse(ecx, ecy, er, er * 0.65, 0, 0, Math.PI * 2)
+            ctx.fill()
+          })
+        }
+
+        // ── Readout labels ──
+        ctx.font = "10px Courier New"
+        ctx.textAlign = "left"
+        ctx.fillStyle = "#00ff88"
+        ctx.shadowColor = "#00ff88"
+        ctx.shadowBlur = 6
+        ctx.globalAlpha = 0.75
+        const nose2 = p(NOSE)
+        const readouts = [
+          [nose2.x + 30, nose2.y - 20, "SKULL INTEGRITY: 100%"],
+          [nose2.x + 30, nose2.y - 5, "BONE DENSITY: HIGH"],
+          [nose2.x + 30, nose2.y + 10, `JOINTS TRACKED: ${JOINTS.length}`],
+        ]
+        readouts.forEach(([rx, ry, txt]) => {
+          ctx.fillText(txt, rx, ry)
+        })
+
+        ctx.restore()
+      }
+
+      const EXP_XRAY = {
+        name: "🦴  X-RAY SKELETON",
+        useWings: false,
+        useMask: false,
+        useFace: false,
+        onFrame(results, ctx, t) {
+          const pose = results.poseLandmarks
+          const face = results.faceLandmarks
+          drawXraySkeleton(ctx, pose, face, t)
+          expDot.className = pose ? "hud-dot" : "hud-dot off"
+          expStatus.textContent = pose ? "SCANNING ✓" : "STAND IN FRAME"
+        },
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // EXPERIENCE 13 — PORTAL (Doctor Strange)
+      // ═══════════════════════════════════════════════════════════════════════════
+      const portalStars = Array.from({ length: isMobile ? 50 : 120 }, () => ({
+        angle: Math.random() * Math.PI * 2,
+        dist: Math.random(),
+        size: 0.5 + Math.random() * 2,
+        speed: 0.4 + Math.random() * 1.2,
+        bright: Math.random() > 0.7,
+      }))
+
+      function drawPortal(ctx, hand, t, side) {
+        if (!hand || !state.toScreen) return
+        const ts = state.toScreen
+        const palm = ts(
+          hand[HAND_IDX.MIDDLE_MCP].x,
+          hand[HAND_IDX.MIDDLE_MCP].y,
+        )
+        const wrist = ts(hand[HAND_IDX.WRIST].x, hand[HAND_IDX.WRIST].y)
+        const midTip = ts(
+          hand[HAND_IDX.MIDDLE_TIP].x,
+          hand[HAND_IDX.MIDDLE_TIP].y,
+        )
+        const R = Math.hypot(midTip.x - wrist.x, midTip.y - wrist.y) * 0.72
+        if (R < 20) return
+        const cx = palm.x,
+          cy = palm.y
+        const offset = side === "left" ? 0 : Math.PI * 0.7
+
+        ctx.save()
+
+        // ── Deep space void inside portal ──
+        const voidG = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 0.9)
+        voidG.addColorStop(0, "rgba(0,0,8,0.92)")
+        voidG.addColorStop(0.6, "rgba(5,0,20,0.88)")
+        voidG.addColorStop(1, "rgba(20,5,40,0.7)")
+        ctx.fillStyle = voidG
+        ctx.shadowBlur = 0
+        ctx.globalAlpha = 1
+        ctx.beginPath()
+        ctx.arc(cx, cy, R * 0.9, 0, Math.PI * 2)
+        ctx.fill()
+
+        // ── Stars inside portal ──
+        ctx.globalAlpha = 1
+        portalStars.forEach((star) => {
+          star.angle += star.speed * 0.008
+          const maxD = R * 0.88
+          const starDist = star.dist * maxD
+          const sx = cx + Math.cos(star.angle + offset) * starDist
+          const sy = cy + Math.sin(star.angle + offset) * starDist * 0.55
+          const twinkle =
+            0.5 + Math.sin(t * (2 + star.speed) + star.angle * 5) * 0.5
+          if (sx < cx - R || sx > cx + R || sy < cy - R || sy > cy + R) return
+          const starG = ctx.createRadialGradient(
+            sx,
+            sy,
+            0,
+            sx,
+            sy,
+            star.size * 2.5,
+          )
+          starG.addColorStop(
+            0,
+            `rgba(${star.bright ? "255,240,200" : "180,180,255"},${0.95 * twinkle})`,
+          )
+          starG.addColorStop(1, "rgba(0,0,0,0)")
+          ctx.fillStyle = starG
+          ctx.beginPath()
+          ctx.arc(sx, sy, star.size * 2.5, 0, Math.PI * 2)
+          ctx.fill()
+        })
+
+        // ── Nebula smears inside portal ──
+        ;[
+          [0.3, 0.2, "#1a0050"],
+          [0.6, -0.15, "#002255"],
+          [-0.3, 0.3, "#220040"],
+        ].forEach(([ox, oy, col]) => {
+          const nx = cx + ox * R,
+            ny = cy + oy * R * 0.55
+          const ng = ctx.createRadialGradient(nx, ny, 0, nx, ny, R * 0.5)
+          ng.addColorStop(0, col + "aa")
+          ng.addColorStop(1, col + "00")
+          ctx.fillStyle = ng
+          ctx.globalAlpha = 0.35
+          ctx.beginPath()
+          ctx.arc(nx, ny, R * 0.5, 0, Math.PI * 2)
+          ctx.fill()
+        })
+
+        // ── Clip to portal circle so stars don't bleed out ──
+        // (achieved by drawing the dark ring overlay over the edge)
+
+        // ── Outer energy ring — spinning golden sparks ──
+        const SPARK_COUNT = 64
+        ctx.globalAlpha = 1
+        for (let i = 0; i < SPARK_COUNT; i++) {
+          const a = (i / SPARK_COUNT) * Math.PI * 2 + t * 1.8 + offset
+          const wobble = Math.sin(t * 4 + i * 0.4) * R * 0.04
+          const sparkR = R + wobble
+          const sx = cx + Math.cos(a) * sparkR
+          const sy = cy + Math.sin(a) * sparkR
+          const sparkSz = i % 4 === 0 ? 4.5 : 2
+          const sparkG = ctx.createRadialGradient(
+            sx,
+            sy,
+            0,
+            sx,
+            sy,
+            sparkSz * 3,
+          )
+          const bright = i % 4 === 0
+          sparkG.addColorStop(
+            0,
+            bright ? "rgba(255,200,50,1.0)" : "rgba(255,140,0,0.85)",
+          )
+          sparkG.addColorStop(1, "rgba(255,80,0,0)")
+          ctx.fillStyle = sparkG
+          ctx.shadowColor = "#ffaa00"
+          ctx.shadowBlur = bright ? 12 : 5
+          ctx.beginPath()
+          ctx.arc(sx, sy, sparkSz * 3, 0, Math.PI * 2)
+          ctx.fill()
+        }
+
+        // ── Counter-rotating inner spark ring ──
+        for (let i = 0; i < 32; i++) {
+          const a = (i / 32) * Math.PI * 2 - t * 2.5 + offset
+          const sr = R * 0.9
+          const sx = cx + Math.cos(a) * sr,
+            sy = cy + Math.sin(a) * sr
+          ctx.fillStyle = "rgba(180,220,255,0.7)"
+          ctx.shadowColor = "#aaddff"
+          ctx.shadowBlur = 6
+          ctx.globalAlpha = 0.5 + Math.sin(t * 5 + i) * 0.3
+          ctx.beginPath()
+          ctx.arc(sx, sy, 1.5, 0, Math.PI * 2)
+          ctx.fill()
+        }
+
+        // ── Rim glow rings ──
+        for (let ring = 0; ring < 4; ring++) {
+          const rr = R * (1.0 + ring * 0.12)
+          const alpha = 0.7 - ring * 0.15
+          ctx.strokeStyle =
+            ring < 2
+              ? `rgba(255,160,0,${alpha})`
+              : `rgba(255,80,0,${alpha * 0.5})`
+          ctx.lineWidth = ring < 2 ? 3 - ring : 1
+          ctx.shadowColor = "#ff8800"
+          ctx.shadowBlur = ring === 0 ? 20 : 8
+          ctx.globalAlpha = 1
+          ctx.beginPath()
+          ctx.arc(cx, cy, rr, 0, Math.PI * 2)
+          ctx.stroke()
+        }
+
+        // ── Portal label ──
+        ctx.fillStyle = "rgba(255,180,50,0.6)"
+        ctx.shadowColor = "#ffaa00"
+        ctx.shadowBlur = 8
+        ctx.font = `${Math.round(R * 0.18)}px Courier New`
+        ctx.textAlign = "center"
+        ctx.globalAlpha = 0.7
+        ctx.fillText(side === "left" ? "ORIGIN" : "DEST", cx, cy + R * 1.3)
+
+        ctx.restore()
+      }
+
+      const EXP_PORTAL = {
+        name: "🌀  PORTAL",
+        useWings: false,
+        useMask: false,
+        useFace: false,
+        onFrame(results, ctx, t) {
+          const lh = results.leftHandLandmarks
+          const rh = results.rightHandLandmarks
+          if (!lh && !rh) {
+            expDot.className = "hud-dot off"
+            expStatus.textContent = "RAISE YOUR HANDS"
+            return
+          }
+          if (lh) drawPortal(ctx, lh, t, "left")
+          if (rh) drawPortal(ctx, rh, t, "right")
+          expDot.className = "hud-dot yellow"
+          expStatus.textContent =
+            "PORTALS OPEN " + (lh ? "L✓" : "") + (rh ? " R✓" : "")
+        },
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // EXPERIENCE REGISTRY
+      // ═══════════════════════════════════════════════════════════
+      const EXPERIENCES = [
+        EXP_WINGS, // 1
+        EXP_HAND_HUD, // 2
+        EXP_WOLVERINE, // 3
+        EXP_IRONMAN_CHEST, // 4
+        EXP_THANOS, // 5
+        EXP_MAGIC, // 6
+        EXP_ENERGY_BALL, // 7
+        EXP_REPULSOR, // 8
+        EXP_ENERGY_EYES, // 9
+        EXP_LIGHTNING, // 10
+        EXP_WEB_SHOOTER, // 11
+        EXP_XRAY, // 12
+        EXP_PORTAL, // 13
+      ]
+
+      // ═══════════════════════════════════════════════════════════
+      // EXPERIENCE SWITCHER
+      // ═══════════════════════════════════════════════════════════
+      function switchExperience(dir) {
+        state.expIndex =
+          (state.expIndex + dir + EXPERIENCES.length) % EXPERIENCES.length
+        const exp = EXPERIENCES[state.expIndex]
+
+        expNameEl.classList.add("flash")
+        setTimeout(() => {
+          expNameEl.textContent = exp.name
+          expNameEl.classList.remove("flash")
+        }, 160)
+
+        if (!exp.useWings) {
+          if (wingGroup) wingGroup.visible = false
+          wctx.clearRect(0, 0, state.screen.w, state.screen.h)
+        }
+        if (!exp.useMask) {
+          if (maskGroup) maskGroup.visible = false
+          mctx.clearRect(0, 0, state.screen.w, state.screen.h)
+        }
+        state.wingPos.active = false
+        state.lastFaceMatrix = null
+        energyBallScale = 0
+        state._lastEnergyPos = null
+        repulsorState.left = { active: false, charge: 0, blasts: [] }
+        repulsorState.right = { active: false, charge: 0, blasts: [] }
+        chestParticles.length = 0
+        lightningBolts2.length = 0
+        particles.left = []
+        particles.right = []
+        webStrands.length = 0
+        webParticles.length = 0
+        xrayHistory.length = 0
+        if (drawWebShooter._lastSpawn !== undefined)
+          drawWebShooter._lastSpawn = 0
+
+        // Lazily init face landmarker for Wolverine
+        if (
+          exp.useFace &&
+          !state.faceLandmarkerReady &&
+          !state.faceLandmarker
+        ) {
+          state.faceLandmarker = "loading"
+          initFaceLandmarker()
+        }
+
+        expDot.className = "hud-dot yellow"
+        expStatus.textContent =
+          state.expIndex + 1 + "/" + EXPERIENCES.length + " " + exp.name
+      }
+
+      $("btn-prev").addEventListener("click", () => switchExperience(-1))
+      $("btn-next").addEventListener("click", () => switchExperience(+1))
+
+      // ═══════════════════════════════════════════════════════════
+      // HOLISTIC RESULTS
+      // ═══════════════════════════════════════════════════════════
+      function onResults(results) {
+        tickFPS()
+        const exp = EXPERIENCES[state.expIndex]
+        const t = performance.now() / 1000
+
+        if (exp.useFace) runFaceDetection()
+        if (exp.useWings) updateWingPosition(results.poseLandmarks || null)
+
+        compositeWings(results.segmentationMask || null, exp.useWings)
+        compositeMask(!!exp.useMask)
+
+        octx.clearRect(0, 0, state.screen.w, state.screen.h)
+        exp.onFrame(results, octx, t)
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // FPS
+      // ═══════════════════════════════════════════════════════════
+      function tickFPS() {
+        state.fps.count = (state.fps.count || 0) + 1
+        const now = performance.now(),
+          el = now - state.fps.last
+        if (el >= 1000) {
+          const fps = Math.round((state.fps.count * 1000) / el)
+          state.fps.count = 0
+          state.fps.last = now
+          fpsStatus.textContent = "FPS " + fps
+          fpsDot.className =
+            "hud-dot " + (fps >= 25 ? "" : fps >= 15 ? "yellow" : "red")
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // RESIZE
+      // ═══════════════════════════════════════════════════════════
+      function onResize() {
+        const w = window.innerWidth,
+          h = window.innerHeight
+        const rawDpr = window.devicePixelRatio || 1
+        const dpr = isMobile ? Math.min(rawDpr, 1.5) : rawDpr
+        if (wingRenderer) wingRenderer.setSize(w, h)
+        if (wingCamera) {
+          wingCamera.aspect = w / h
+          wingCamera.updateProjectionMatrix()
+        }
+        if (maskRenderer) maskRenderer.setSize(w, h)
+        if (maskCamera) {
+          maskCamera.aspect = w / h
+          maskCamera.updateProjectionMatrix()
+        }
+        ;[wingCompCanvas, personCanvas, maskCompCanvas, overlayCanvas].forEach(
+          (c) => {
+            c.width = w * dpr
+            c.height = h * dpr
+            c.style.width = w + "px"
+            c.style.height = h + "px"
+          },
+        )
+        wctx.scale(dpr, dpr)
+        pctx.scale(dpr, dpr)
+        mctx.scale(dpr, dpr)
+        octx.scale(dpr, dpr)
+        state.screen.w = w
+        state.screen.h = h
+        if (video.videoWidth && video.videoHeight)
+          state.toScreen = buildCoordMapper(
+            video.videoWidth,
+            video.videoHeight,
+            w,
+            h,
+          )
+      }
+      window.addEventListener("resize", onResize)
+
+      // ═══════════════════════════════════════════════════════════
+      // CONTROLS
+      // ═══════════════════════════════════════════════════════════
+      $("btn-seg").addEventListener("click", () => {
+        state.segDebug = !state.segDebug
+        $("btn-seg").textContent =
+          "MASK DEBUG: " + (state.segDebug ? "ON" : "OFF")
+        if (!state.segDebug)
+          pctx.clearRect(0, 0, state.screen.w, state.screen.h)
+      })
+
+      // ═══════════════════════════════════════════════════════════
+      // CAMERA + HOLISTIC
+      // ═══════════════════════════════════════════════════════════
+      function initMediaPipe() {
+        mpStatus.textContent = "HOLISTIC LOADING..."
+        mpDot.className = "hud-dot yellow"
+        const holistic = new Holistic({
+          locateFile: (f) =>
+            "https://cdn.jsdelivr.net/npm/@mediapipe/holistic/" + f,
+        })
+        holistic.setOptions({
+          modelComplexity: isMobile ? 0 : 1, // 0 = lite/faster on mobile
+          smoothLandmarks: true,
+          enableSegmentation: true, // always on — wings need it
+          smoothSegmentation: true,
+          refineFaceLandmarks: false,
+          minDetectionConfidence: isMobile ? 0.5 : 0.55,
+          minTrackingConfidence: isMobile ? 0.4 : 0.5,
+        })
+        holistic.onResults(onResults)
+        new Camera(video, {
+          onFrame: async () => {
+            await holistic.send({ image: video })
+          },
+          width: 640,
+          height: 480,
+        })
+          .start()
+          .then(() => {
+            mpStatus.textContent = "HOLISTIC ✓"
+            mpDot.className = "hud-dot"
+          })
+          .catch(() => {
+            mpStatus.textContent = "MP ERROR"
+            mpDot.className = "hud-dot red"
+          })
+      }
+
+      async function startCamera() {
+        if (state.started) return
+        state.started = true
+        splash.classList.add("hidden")
+        try {
+          const camW = isMobile ? 640 : 1280
+          const camH = isMobile ? 480 : 720
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: "user",
+              width: { ideal: camW },
+              height: { ideal: camH },
+            },
+            audio: false,
+          })
+          video.srcObject = stream
+          await new Promise((res, rej) => {
+            video.onloadedmetadata = res
+            video.onerror = rej
+          })
+          await video.play()
+          onResize()
+          state.toScreen = buildCoordMapper(
+            video.videoWidth,
+            video.videoHeight,
+            state.screen.w,
+            state.screen.h,
+          )
+          camDot.className = "hud-dot"
+          camStatus.textContent =
+            "CAM ✓ " + video.videoWidth + "×" + video.videoHeight
+          if (isMobile)
+            document.getElementById("perf-pill").style.display = "flex"
+          initMediaPipe()
+        } catch (err) {
+          camDot.className = "hud-dot red"
+          camStatus.textContent = "CAM ERROR: " + err.name
+          splash.classList.remove("hidden")
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // BOOT
+      // ═══════════════════════════════════════════════════════════
+      function init() {
+        initThree()
+        onResize()
+        switchExperience(0)
+        splash.addEventListener("click", startCamera)
+        splash.addEventListener("touchend", (e) => {
+          e.preventDefault()
+          startCamera()
+        })
+        if (!/iPad|iPhone|iPod/.test(navigator.userAgent))
+          setTimeout(startCamera, 300)
+      }
+      init()
+    </script>
+  </body>
+</html>
