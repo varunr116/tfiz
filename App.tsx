@@ -191,7 +191,7 @@ const ARLensOverlay: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
       {/* The iframe — loads superhero-ar.html from public folder */}
       <iframe
-        src="/superhero-ar.html"
+        src="/tfiz/superhero-ar.html"
         className="flex-1 w-full border-0"
         allow="camera; microphone; accelerometer; gyroscope"
         allowFullScreen
