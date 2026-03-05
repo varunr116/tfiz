@@ -3430,24 +3430,26 @@
             "https://cdn.jsdelivr.net/npm/@mediapipe/holistic/" + f,
         })
         holistic.setOptions({
-          modelComplexity: isMobile ? 0 : 1, // 0 = lite/faster on mobile
+          modelComplexity: isMobile ? 0 : 1,
           smoothLandmarks: true,
-          enableSegmentation: true, // always on — wings need it
+          enableSegmentation: true,
           smoothSegmentation: true,
           refineFaceLandmarks: false,
           minDetectionConfidence: isMobile ? 0.5 : 0.55,
           minTrackingConfidence: isMobile ? 0.4 : 0.5,
         })
         holistic.onResults(onResults)
-        new Camera(video, {
-          onFrame: async () => {
-            await holistic.send({ image: video })
-          },
-          width: 640,
-          height: 480,
-        })
-          .start()
+
+        // Feed frames manually via rAF instead of using MediaPipe's Camera utility.
+        // MediaPipe's Camera.start() calls getUserMedia internally and overrides
+        // whichever stream we already have — causing the camera to snap back to
+        // front after a flip. By driving the loop ourselves we keep full control
+        // of the stream while still sending every frame to Holistic.
+        let mpReady = false
+        holistic
+          .initialize()
           .then(() => {
+            mpReady = true
             mpStatus.textContent = "HOLISTIC ✓"
             mpDot.className = "hud-dot"
           })
@@ -3455,6 +3457,14 @@
             mpStatus.textContent = "MP ERROR"
             mpDot.className = "hud-dot red"
           })
+
+        async function sendFrame() {
+          if (mpReady && video.readyState >= 2 && !video.paused) {
+            await holistic.send({ image: video })
+          }
+          requestAnimationFrame(sendFrame)
+        }
+        requestAnimationFrame(sendFrame)
       }
 
       async function startCamera(facingMode = "user") {
